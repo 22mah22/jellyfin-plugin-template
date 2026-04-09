@@ -1,16 +1,16 @@
 ---
-name: "Template"
+name: "Gif Generator"
 guid: "eb5d7894-8eef-4b36-aa6f-5d124e828ce1"
 version: "1.0.0.0"
 targetAbi: "10.9.0.0"
-framework: "net8.0"
-overview: "Short description about your plugin"
+framework: "net9.0"
+overview: "Generate GIF clips from Jellyfin videos"
 description: >
-  This is a longer description that can span more than one
-  line and include details about your plugin.
+  Authenticated users can generate GIF clips from Jellyfin videos
+  by specifying item id, start time, and clip length.
 category: "General"
 owner: "jellyfin"
 artifacts:
 - "Jellyfin.Plugin.Template.dll"
 changelog: >
-  changelog
+  Added gif generation API and dashboard test UI.
