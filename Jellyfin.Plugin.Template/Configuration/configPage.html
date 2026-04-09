@@ -2,77 +2,219 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Template</title>
+    <title>Gif Generator</title>
+    <style>
+        .gifGeneratorSection {
+            margin-top: 2em;
+            padding-top: 1.5em;
+            border-top: 1px solid var(--theme-light-color, #666);
+        }
+
+        .gifGeneratorRow {
+            display: flex;
+            gap: 1em;
+            flex-wrap: wrap;
+        }
+
+        .gifGeneratorRow .inputContainer {
+            flex: 1 1 220px;
+            min-width: 220px;
+        }
+
+        .gifResult {
+            margin-top: 1em;
+        }
+
+        .gifResult img {
+            max-width: min(100%, 420px);
+            border-radius: 6px;
+        }
+
+        .monoValue {
+            font-family: ui-monospace, Menlo, Consolas, monospace;
+            word-break: break-all;
+        }
+    </style>
 </head>
 <body>
-    <div id="TemplateConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div id="GifGeneratorConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
         <div data-role="content">
             <div class="content-primary">
-                <form id="TemplateConfigForm">
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="Options">Several Options</label>
-                        <select is="emby-select" id="Options" name="Options" class="emby-select-withcolor emby-select">
-                            <option id="optOneOption" value="OneOption">One Option</option>
-                            <option id="optAnotherOption" value="AnotherOption">Another Option</option>
-                        </select>
-                    </div>
+                <form id="GifGeneratorConfigForm">
+                    <h2>Plugin Defaults</h2>
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AnInteger">An Integer</label>
-                        <input id="AnInteger" name="AnInteger" type="number" is="emby-input" min="0" />
-                        <div class="fieldDescription">A Description</div>
+                        <label class="inputLabel inputLabelUnfocused" for="MaxGifLengthSeconds">Maximum GIF Length (seconds)</label>
+                        <input id="MaxGifLengthSeconds" name="MaxGifLengthSeconds" type="number" is="emby-input" min="1" max="120" required />
                     </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="TrueFalseSetting" name="TrueFalseCheckBox" type="checkbox" is="emby-checkbox" />
-                            <span>A Checkbox</span>
-                        </label>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AString">A String</label>
-                        <input id="AString" name="AString" type="text" is="emby-input" />
-                        <div class="fieldDescription">Another Description</div>
+                    <div class="gifGeneratorRow">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DefaultFps">Default FPS</label>
+                            <input id="DefaultFps" name="DefaultFps" type="number" is="emby-input" min="1" max="60" required />
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="DefaultWidth">Default Width</label>
+                            <input id="DefaultWidth" name="DefaultWidth" type="number" is="emby-input" min="64" max="4096" required />
+                        </div>
                     </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                            <span>Save</span>
+                            <span>Save Settings</span>
                         </button>
                     </div>
                 </form>
+
+                <form id="GifGeneratorTestForm" class="gifGeneratorSection">
+                    <h2>Test GIF Generation</h2>
+                    <div class="fieldDescription">Use this form to call <code>POST /Plugins/GifGenerator/Create</code> from the dashboard with your current authenticated session.</div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ItemId">Video Item ID</label>
+                        <input id="ItemId" name="ItemId" type="text" is="emby-input" required />
+                        <div class="fieldDescription">Paste a Jellyfin video Item ID.</div>
+                    </div>
+
+                    <div class="gifGeneratorRow">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="StartSeconds">Start Seconds</label>
+                            <input id="StartSeconds" name="StartSeconds" type="number" is="emby-input" min="0" step="0.1" value="0" required />
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="LengthSeconds">Length Seconds</label>
+                            <input id="LengthSeconds" name="LengthSeconds" type="number" is="emby-input" min="0.1" step="0.1" value="3" required />
+                        </div>
+                    </div>
+
+                    <div class="gifGeneratorRow">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="TestWidth">Width (optional)</label>
+                            <input id="TestWidth" name="TestWidth" type="number" is="emby-input" min="0" max="4096" placeholder="0 = default" value="0" />
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="TestFps">FPS (optional)</label>
+                            <input id="TestFps" name="TestFps" type="number" is="emby-input" min="0" max="60" placeholder="0 = default" value="0" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <button id="GenerateGifBtn" is="emby-button" type="submit" class="raised block emby-button">
+                            <span>Generate GIF</span>
+                        </button>
+                    </div>
+
+                    <div id="GifStatus" class="fieldDescription gifResult"></div>
+                    <div id="GifResult" class="gifResult"></div>
+                </form>
             </div>
         </div>
+
         <script type="text/javascript">
-            var TemplateConfig = {
+            var GifGeneratorConfig = {
                 pluginUniqueId: 'eb5d7894-8eef-4b36-aa6f-5d124e828ce1'
             };
 
-            document.querySelector('#TemplateConfigPage')
+            function parsePositiveInt(selector) {
+                var value = parseInt(document.querySelector(selector).value, 10);
+                return Number.isNaN(value) ? 0 : value;
+            }
+
+            function parsePositiveFloat(selector) {
+                var value = parseFloat(document.querySelector(selector).value);
+                return Number.isNaN(value) ? 0 : value;
+            }
+
+            function setStatus(message, isError) {
+                var element = document.querySelector('#GifStatus');
+                element.textContent = message;
+                element.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'var(--theme-primary-color, #52b54b)';
+            }
+
+            function setResult(downloadUrl, fileName) {
+                var result = document.querySelector('#GifResult');
+                result.innerHTML = '';
+
+                var link = document.createElement('a');
+                link.href = downloadUrl;
+                link.textContent = 'Download ' + fileName;
+                link.className = 'monoValue';
+                link.setAttribute('target', '_blank');
+
+                var preview = document.createElement('img');
+                preview.src = downloadUrl + '?_=' + Date.now();
+                preview.alt = 'Generated GIF preview';
+
+                result.appendChild(link);
+                result.appendChild(document.createElement('br'));
+                result.appendChild(preview);
+            }
+
+            document.querySelector('#GifGeneratorConfigPage')
                 .addEventListener('pageshow', function() {
                     Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(TemplateConfig.pluginUniqueId).then(function (config) {
-                        document.querySelector('#Options').value = config.Options;
-                        document.querySelector('#AnInteger').value = config.AnInteger;
-                        document.querySelector('#TrueFalseSetting').checked = config.TrueFalseSetting;
-                        document.querySelector('#AString').value = config.AString;
+                    ApiClient.getPluginConfiguration(GifGeneratorConfig.pluginUniqueId).then(function(config) {
+                        document.querySelector('#MaxGifLengthSeconds').value = config.MaxGifLengthSeconds;
+                        document.querySelector('#DefaultFps').value = config.DefaultFps;
+                        document.querySelector('#DefaultWidth').value = config.DefaultWidth;
                         Dashboard.hideLoadingMsg();
                     });
                 });
 
-            document.querySelector('#TemplateConfigForm')
+            document.querySelector('#GifGeneratorConfigForm')
                 .addEventListener('submit', function(e) {
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(TemplateConfig.pluginUniqueId).then(function (config) {
-                    config.Options = document.querySelector('#Options').value;
-                    config.AnInteger = document.querySelector('#AnInteger').value;
-                    config.TrueFalseSetting = document.querySelector('#TrueFalseSetting').checked;
-                    config.AString = document.querySelector('#AString').value;
-                    ApiClient.updatePluginConfiguration(TemplateConfig.pluginUniqueId, config).then(function (result) {
-                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    e.preventDefault();
+
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(GifGeneratorConfig.pluginUniqueId).then(function(config) {
+                        config.MaxGifLengthSeconds = parsePositiveInt('#MaxGifLengthSeconds');
+                        config.DefaultFps = parsePositiveInt('#DefaultFps');
+                        config.DefaultWidth = parsePositiveInt('#DefaultWidth');
+                        ApiClient.updatePluginConfiguration(GifGeneratorConfig.pluginUniqueId, config).then(function(result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
                     });
+
+                    return false;
                 });
 
-                e.preventDefault();
-                return false;
-            });
+            document.querySelector('#GifGeneratorTestForm')
+                .addEventListener('submit', function(e) {
+                    e.preventDefault();
+
+                    setStatus('Generating GIF...', false);
+                    document.querySelector('#GifResult').innerHTML = '';
+
+                    var payload = {
+                        itemId: document.querySelector('#ItemId').value.trim(),
+                        startSeconds: parsePositiveFloat('#StartSeconds'),
+                        lengthSeconds: parsePositiveFloat('#LengthSeconds'),
+                        width: parsePositiveInt('#TestWidth'),
+                        fps: parsePositiveInt('#TestFps')
+                    };
+
+                    fetch('/Plugins/GifGenerator/Create', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload),
+                        credentials: 'same-origin'
+                    }).then(function(response) {
+                        if (!response.ok) {
+                            return response.text().then(function(text) {
+                                throw new Error(text || ('Request failed with status ' + response.status));
+                            });
+                        }
+
+                        return response.json();
+                    }).then(function(data) {
+                        var downloadUrl = '/' + data.downloadUrl;
+                        setStatus('GIF generated successfully.', false);
+                        setResult(downloadUrl, data.fileName);
+                    }).catch(function(err) {
+                        setStatus('Failed: ' + err.message, true);
+                    });
+
+                    return false;
+                });
         </script>
     </div>
 </body>
