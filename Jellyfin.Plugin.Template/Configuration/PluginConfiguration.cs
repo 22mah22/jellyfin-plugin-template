@@ -3,22 +3,6 @@ using MediaBrowser.Model.Plugins;
 namespace Jellyfin.Plugin.Template.Configuration;
 
 /// <summary>
-/// The configuration options.
-/// </summary>
-public enum SomeOptions
-{
-    /// <summary>
-    /// Option one.
-    /// </summary>
-    OneOption,
-
-    /// <summary>
-    /// Second option.
-    /// </summary>
-    AnotherOption
-}
-
-/// <summary>
 /// Plugin configuration.
 /// </summary>
 public class PluginConfiguration : BasePluginConfiguration
@@ -28,30 +12,23 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public PluginConfiguration()
     {
-        // set default options here
-        Options = SomeOptions.AnotherOption;
-        TrueFalseSetting = true;
-        AnInteger = 2;
-        AString = "string";
+        MaxGifLengthSeconds = 15;
+        DefaultFps = 12;
+        DefaultWidth = 480;
     }
 
     /// <summary>
-    /// Gets or sets a value indicating whether some true or false setting is enabled..
+    /// Gets or sets the maximum gif length, in seconds, accepted by the API.
     /// </summary>
-    public bool TrueFalseSetting { get; set; }
+    public int MaxGifLengthSeconds { get; set; }
 
     /// <summary>
-    /// Gets or sets an integer setting.
+    /// Gets or sets the default frames per second used during generation.
     /// </summary>
-    public int AnInteger { get; set; }
+    public int DefaultFps { get; set; }
 
     /// <summary>
-    /// Gets or sets a string setting.
+    /// Gets or sets the default gif width used during generation.
     /// </summary>
-    public string AString { get; set; }
-
-    /// <summary>
-    /// Gets or sets an enum option.
-    /// </summary>
-    public SomeOptions Options { get; set; }
+    public int DefaultWidth { get; set; }
 }
