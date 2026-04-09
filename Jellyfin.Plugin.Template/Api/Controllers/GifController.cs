@@ -1,17 +1,11 @@
-using System;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Jellyfin.Plugin.Template.Api.Models;
-using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Jellyfin.Plugin.Template.Api.Controllers;
@@ -24,32 +18,23 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 [Route("Plugins/GifGenerator")]
 public class GifController : ControllerBase
 {
-    private static readonly string[] DockerAndLinuxFfmpegCandidates =
-    [
-        "/usr/lib/jellyfin-ffmpeg/ffmpeg",
-        "/usr/lib/jellyfin-ffmpeg5/ffmpeg",
-        "/usr/lib/jellyfin-ffmpeg6/ffmpeg",
-        "/usr/lib/jellyfin-ffmpeg7/ffmpeg",
-        "/usr/bin/ffmpeg"
-    ];
-
     private readonly ILibraryManager _libraryManager;
-    private readonly IApplicationPaths _applicationPaths;
+    private readonly IServerApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GifController"/> class.
     /// </summary>
     /// <param name="libraryManager">The library manager.</param>
-    /// <param name="applicationPaths">The server application paths.</param>
+    /// <param name="serverApplicationPaths">The server application paths.</param>
     /// <param name="serverConfigurationManager">The server configuration manager.</param>
     public GifController(
         ILibraryManager libraryManager,
-        IApplicationPaths applicationPaths,
+        IServerApplicationPaths serverApplicationPaths,
         IServerConfigurationManager serverConfigurationManager)
     {
         _libraryManager = libraryManager;
-        _applicationPaths = applicationPaths;
+        _serverApplicationPaths = serverApplicationPaths;
         _serverConfigurationManager = serverConfigurationManager;
     }
 
@@ -60,7 +45,7 @@ public class GifController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The generated gif metadata.</returns>
     [HttpPost("Create")]
-    [ProducesResponseType(typeof(CreateGifResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType<CreateGifResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -83,15 +68,13 @@ public class GifController : ControllerBase
             return NotFound("Video item was not found or does not have a local file path.");
         }
 
-        var ffmpegPath = ResolveFfmpegPath(_serverConfigurationManager.GetEncodingOptions().EncoderAppPath);
+        var ffmpegPath = _serverConfigurationManager.GetEncodingOptions().EncoderAppPath;
         if (string.IsNullOrWhiteSpace(ffmpegPath))
         {
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                "No ffmpeg binary was found. Check Jellyfin Encoding settings (EncoderAppPath) or ensure jellyfin-ffmpeg exists in the container.");
+            return StatusCode(StatusCodes.Status500InternalServerError, "Jellyfin ffmpeg path is not configured.");
         }
 
-        var outputDirectory = Path.Combine(_applicationPaths.DataPath, "plugins", "gif-generator", "generated");
+        var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
         Directory.CreateDirectory(outputDirectory);
 
         var outputFileName = $"{request.ItemId:N}_{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.gif";
@@ -142,7 +125,7 @@ public class GifController : ControllerBase
     public ActionResult DownloadGif([FromRoute] string fileName)
     {
         var decodedFileName = Uri.UnescapeDataString(fileName);
-        var outputDirectory = Path.Combine(_applicationPaths.DataPath, "plugins", "gif-generator", "generated");
+        var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
         var fullPath = Path.GetFullPath(Path.Combine(outputDirectory, decodedFileName));
 
         if (!fullPath.StartsWith(Path.GetFullPath(outputDirectory), StringComparison.Ordinal) || !System.IO.File.Exists(fullPath))
@@ -151,40 +134,6 @@ public class GifController : ControllerBase
         }
 
         return PhysicalFile(fullPath, "image/gif", enableRangeProcessing: true);
-    }
-
-    private static string? ResolveFfmpegPath(string? configuredPath)
-    {
-        if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
-        {
-            return configuredPath;
-        }
-
-        foreach (var candidate in DockerAndLinuxFfmpegCandidates)
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        var segments = path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var segment in segments)
-        {
-            var possibleBinary = Path.Combine(segment, "ffmpeg");
-            if (File.Exists(possibleBinary))
-            {
-                return possibleBinary;
-            }
-        }
-
-        return null;
     }
 
     private static string BuildArguments(double startSeconds, double lengthSeconds, string inputPath, int fps, int width, string outputPath)
