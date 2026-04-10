@@ -1,11 +1,12 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Template.Api.Models;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -64,7 +65,7 @@ public class GifController : ControllerBase
         }
 
         var item = _libraryManager.GetItemById(request.ItemId);
-        if (item is null || !string.Equals(item.MediaType, "Video", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(item.Path))
+        if (item is null || item.MediaType != MediaType.Video || string.IsNullOrWhiteSpace(item.Path))
         {
             return NotFound("Video item was not found or does not have a local file path.");
         }
@@ -134,16 +135,30 @@ public class GifController : ControllerBase
             return NotFound();
         }
 
-        var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
-        var fullPath = Path.GetFullPath(Path.Combine(outputDirectory, decodedFileName));
-
-        if (!fullPath.StartsWith(Path.GetFullPath(outputDirectory), StringComparison.Ordinal) || !System.IO.File.Exists(fullPath))
+        if (!SafeGifFileNamePattern.IsMatch(decodedFileName))
         {
             return NotFound();
         }
 
-        return PhysicalFile(fullPath, "image/gif", enableRangeProcessing: true);
+        var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
+        if (!Directory.Exists(outputDirectory))
+        {
+            return NotFound();
+        }
+
+        var matchingGifPath = Directory
+            .EnumerateFiles(outputDirectory, "*.gif", SearchOption.TopDirectoryOnly)
+            .FirstOrDefault(path => string.Equals(Path.GetFileName(path), decodedFileName, StringComparison.Ordinal));
+
+        if (string.IsNullOrEmpty(matchingGifPath))
+        {
+            return NotFound();
+        }
+
+        return PhysicalFile(matchingGifPath, "image/gif", enableRangeProcessing: true);
     }
+
+    private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
     private static string BuildArguments(double startSeconds, double lengthSeconds, string inputPath, int fps, int width, string outputPath)
     {
