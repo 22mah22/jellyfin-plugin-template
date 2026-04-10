@@ -152,7 +152,7 @@ public class GifController : ControllerBase
             {
                 StreamIndex = stream.Index,
                 Language = stream.Language,
-                DisplayTitle = stream.DisplayTitle,
+                DisplayTitle = GetSubtitleDisplayTitle(stream),
                 IsDefault = stream.IsDefault,
                 IsForced = stream.IsForced,
                 IsExternal = stream.IsExternal
@@ -276,6 +276,25 @@ public class GifController : ControllerBase
         builder.Append(width.ToString(CultureInfo.InvariantCulture));
         builder.Append(":-1:flags=lanczos");
         return builder.ToString();
+    }
+
+    private static string? GetSubtitleDisplayTitle(MediaStream stream)
+    {
+        var streamType = stream.GetType();
+
+        var displayTitle = streamType.GetProperty("DisplayTitle")?.GetValue(stream) as string;
+        if (!string.IsNullOrWhiteSpace(displayTitle))
+        {
+            return displayTitle;
+        }
+
+        var title = streamType.GetProperty("Title")?.GetValue(stream) as string;
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            return title;
+        }
+
+        return null;
     }
 
     private static IEnumerable<MediaStream> GetSubtitleStreams(BaseItem item)
