@@ -211,21 +211,24 @@ public class GifController : ControllerBase
     private string ResolveFfmpegPath()
     {
         var configuredPath = _serverConfigurationManager.GetEncodingOptions().EncoderAppPath;
-        if (IsExecutableFile(configuredPath))
+        var resolvedConfiguredPath = ResolveConfiguredExecutable(configuredPath);
+        if (!string.IsNullOrEmpty(resolvedConfiguredPath))
         {
-            return configuredPath;
+            return resolvedConfiguredPath;
         }
 
         var jellyfinFfmpegPath = Environment.GetEnvironmentVariable("JELLYFIN_FFMPEG");
-        if (IsExecutableFile(jellyfinFfmpegPath))
+        var resolvedJellyfinFfmpegPath = ResolveConfiguredExecutable(jellyfinFfmpegPath);
+        if (!string.IsNullOrEmpty(resolvedJellyfinFfmpegPath))
         {
-            return jellyfinFfmpegPath;
+            return resolvedJellyfinFfmpegPath;
         }
 
         var ffmpegPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
-        if (IsExecutableFile(ffmpegPath))
+        var resolvedFfmpegPath = ResolveConfiguredExecutable(ffmpegPath);
+        if (!string.IsNullOrEmpty(resolvedFfmpegPath))
         {
-            return ffmpegPath;
+            return resolvedFfmpegPath;
         }
 
         var pathResolvedFfmpeg = ResolveFromPathEnvironment();
@@ -245,6 +248,22 @@ public class GifController : ControllerBase
         return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffmpeg.exe" : "ffmpeg";
     }
 
+    private static string? ResolveConfiguredExecutable(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var trimmedPath = path.Trim();
+        if (Path.IsPathRooted(trimmedPath))
+        {
+            return IsExecutableFile(trimmedPath) ? trimmedPath : null;
+        }
+
+        return trimmedPath;
+    }
+
     private static bool IsExecutableFile(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -253,7 +272,31 @@ public class GifController : ControllerBase
         }
 
         var trimmedPath = path.Trim();
-        return Path.IsPathRooted(trimmedPath) && System.IO.File.Exists(trimmedPath);
+        if (!Path.IsPathRooted(trimmedPath) || !System.IO.File.Exists(trimmedPath))
+        {
+            return false;
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return true;
+        }
+
+        try
+        {
+            var mode = System.IO.File.GetUnixFileMode(trimmedPath);
+            return mode.HasFlag(UnixFileMode.UserExecute)
+                || mode.HasFlag(UnixFileMode.GroupExecute)
+                || mode.HasFlag(UnixFileMode.OtherExecute);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     private static string? ResolveFromPathEnvironment()
@@ -268,7 +311,7 @@ public class GifController : ControllerBase
         foreach (var directory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var candidate = Path.Combine(directory, fileName);
-            if (System.IO.File.Exists(candidate))
+            if (IsExecutableFile(candidate))
             {
                 return candidate;
             }
