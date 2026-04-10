@@ -236,12 +236,13 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add("-hide_banner");
         processInfo.ArgumentList.Add("-loglevel");
         processInfo.ArgumentList.Add("error");
+        // Keep seek arguments after input so subtitle timestamps stay aligned for burn-in.
+        processInfo.ArgumentList.Add("-i");
+        processInfo.ArgumentList.Add(inputPath);
         processInfo.ArgumentList.Add("-ss");
         processInfo.ArgumentList.Add(start);
         processInfo.ArgumentList.Add("-t");
         processInfo.ArgumentList.Add(length);
-        processInfo.ArgumentList.Add("-i");
-        processInfo.ArgumentList.Add(inputPath);
         processInfo.ArgumentList.Add("-vf");
         processInfo.ArgumentList.Add(videoFilter);
         processInfo.ArgumentList.Add("-y");
