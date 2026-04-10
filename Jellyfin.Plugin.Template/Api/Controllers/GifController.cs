@@ -262,6 +262,11 @@ public class GifController : ControllerBase
                 builder.Append("':si=");
                 builder.Append(subtitleSelection.FfmpegSubtitleOrdinal.Value.ToString(CultureInfo.InvariantCulture));
             }
+            else
+            {
+                builder.Append("'");
+            }
+
             builder.Append(',');
         }
 
