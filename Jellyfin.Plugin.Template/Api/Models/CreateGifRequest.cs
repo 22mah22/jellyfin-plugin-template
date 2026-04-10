@@ -36,4 +36,9 @@ public class CreateGifRequest
     /// </summary>
     [Range(0, 60)]
     public int Fps { get; set; }
+
+    /// <summary>
+    /// Gets or sets the internal subtitle stream index to burn into the generated gif.
+    /// </summary>
+    public int? SubtitleStreamIndex { get; set; }
 }

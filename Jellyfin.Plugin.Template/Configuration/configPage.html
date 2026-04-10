@@ -37,7 +37,7 @@
     </style>
 </head>
 <body>
-    <div id="GifGeneratorConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
+    <div id="GifGeneratorConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
         <div data-role="content">
             <div class="content-primary">
                 <form id="GifGeneratorConfigForm">
@@ -71,6 +71,21 @@
                         <label class="inputLabel inputLabelUnfocused" for="ItemId">Video Item ID</label>
                         <input id="ItemId" name="ItemId" type="text" is="emby-input" required />
                         <div class="fieldDescription">Paste a Jellyfin video Item ID.</div>
+                    </div>
+
+                    <div class="gifGeneratorRow">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="SubtitleStreamIndex">Subtitle Stream</label>
+                            <select id="SubtitleStreamIndex" name="SubtitleStreamIndex" is="emby-select" disabled>
+                                <option value="">No subtitles</option>
+                            </select>
+                            <div id="SubtitleStatus" class="fieldDescription">Enter an item id to load subtitle streams.</div>
+                        </div>
+                        <div class="inputContainer" style="align-self: flex-end;">
+                            <button id="LoadSubtitlesBtn" is="emby-button" type="button" class="button-link emby-button">
+                                <span>Load subtitles</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="gifGeneratorRow">
@@ -147,6 +162,82 @@
                 result.appendChild(preview);
             }
 
+            function subtitleLabel(option) {
+                var parts = [];
+                if (option.language) {
+                    parts.push(option.language);
+                }
+
+                if (option.displayTitle) {
+                    parts.push(option.displayTitle);
+                }
+
+                if (option.isDefault) {
+                    parts.push('Default');
+                }
+
+                if (option.isForced) {
+                    parts.push('Forced');
+                }
+
+                return parts.length ? parts.join(' - ') : ('Subtitle stream ' + option.streamIndex);
+            }
+
+            function resetSubtitleSelect(message) {
+                var subtitleSelect = document.querySelector('#SubtitleStreamIndex');
+                subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
+                subtitleSelect.disabled = true;
+                document.querySelector('#SubtitleStatus').textContent = message;
+            }
+
+            function populateSubtitleOptions(subtitles) {
+                var subtitleSelect = document.querySelector('#SubtitleStreamIndex');
+                subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
+
+                subtitles.forEach(function(option) {
+                    var streamOption = document.createElement('option');
+                    streamOption.value = option.streamIndex;
+                    streamOption.textContent = subtitleLabel(option);
+                    subtitleSelect.appendChild(streamOption);
+                });
+
+                subtitleSelect.disabled = false;
+                document.querySelector('#SubtitleStatus').textContent = 'Loaded ' + subtitles.length + ' subtitle stream(s).';
+            }
+
+            function loadSubtitleOptions() {
+                var itemId = document.querySelector('#ItemId').value.trim();
+                if (!itemId) {
+                    resetSubtitleSelect('Enter an item id to load subtitle streams.');
+                    return Promise.resolve();
+                }
+
+                resetSubtitleSelect('Loading subtitle streams...');
+
+                return fetch(buildApiUrl('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId)), {
+                    method: 'GET',
+                    credentials: 'same-origin'
+                }).then(function(response) {
+                    if (!response.ok) {
+                        return response.text().then(function(text) {
+                            throw new Error(text || ('Request failed with status ' + response.status));
+                        });
+                    }
+
+                    return response.json();
+                }).then(function(data) {
+                    var subtitles = data.subtitles || data.Subtitles || [];
+                    if (!subtitles.length) {
+                        resetSubtitleSelect('No internal subtitle streams found for this item.');
+                        return;
+                    }
+
+                    populateSubtitleOptions(subtitles);
+                }).catch(function(err) {
+                    resetSubtitleSelect('Failed to load subtitles: ' + err.message);
+                });
+            }
+
             function getAuthToken() {
                 if (!window.ApiClient || !ApiClient.accessToken) {
                     return '';
@@ -170,6 +261,16 @@
                         document.querySelector('#DefaultWidth').value = config.DefaultWidth;
                         Dashboard.hideLoadingMsg();
                     });
+                });
+
+            document.querySelector('#LoadSubtitlesBtn')
+                .addEventListener('click', function() {
+                    loadSubtitleOptions();
+                });
+
+            document.querySelector('#ItemId')
+                .addEventListener('change', function() {
+                    loadSubtitleOptions();
                 });
 
             document.querySelector('#GifGeneratorConfigForm')
@@ -203,6 +304,11 @@
                         width: parsePositiveInt('#TestWidth'),
                         fps: parsePositiveInt('#TestFps')
                     };
+
+                    var selectedSubtitle = document.querySelector('#SubtitleStreamIndex').value;
+                    if (selectedSubtitle !== '') {
+                        payload.subtitleStreamIndex = parseInt(selectedSubtitle, 10);
+                    }
 
                     fetch(buildApiUrl('/Plugins/GifGenerator/Create'), {
                         method: 'POST',
