@@ -101,7 +101,7 @@ public class GifController : ControllerBase
             fps,
             width,
             outputPath,
-            subtitleSelection.FfmpegSubtitleOrdinal);
+            subtitleSelection);
 
         using var process = new Process { StartInfo = processInfo };
         try
@@ -132,7 +132,7 @@ public class GifController : ControllerBase
     }
 
     /// <summary>
-    /// Gets the available internal subtitle streams for a video item.
+    /// Gets the available subtitle streams for a video item.
     /// </summary>
     /// <param name="itemId">The video item id.</param>
     /// <returns>The available subtitle streams for the item.</returns>
@@ -154,7 +154,8 @@ public class GifController : ControllerBase
                 Language = stream.Language,
                 DisplayTitle = stream.DisplayTitle,
                 IsDefault = stream.IsDefault,
-                IsForced = stream.IsForced
+                IsForced = stream.IsForced,
+                IsExternal = stream.IsExternal
             })
             .ToList();
 
@@ -216,11 +217,11 @@ public class GifController : ControllerBase
         int fps,
         int width,
         string outputPath,
-        int? subtitleStreamIndex)
+        SubtitleSelection subtitleSelection)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleStreamIndex);
+        var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection);
 
         var processInfo = new ProcessStartInfo
         {
@@ -248,15 +249,19 @@ public class GifController : ControllerBase
         return processInfo;
     }
 
-    private static string BuildVideoFilter(int fps, int width, string inputPath, int? subtitleStreamIndex)
+    private static string BuildVideoFilter(int fps, int width, string inputPath, SubtitleSelection subtitleSelection)
     {
         var builder = new StringBuilder();
-        if (subtitleStreamIndex.HasValue)
+        if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath))
         {
             builder.Append("subtitles='");
-            builder.Append(EscapeFilterValue(inputPath));
-            builder.Append("':si=");
-            builder.Append(subtitleStreamIndex.Value.ToString(CultureInfo.InvariantCulture));
+            var subtitleInputPath = subtitleSelection.ExternalSubtitlePath ?? inputPath;
+            builder.Append(EscapeFilterValue(subtitleInputPath));
+            if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue)
+            {
+                builder.Append("':si=");
+                builder.Append(subtitleSelection.FfmpegSubtitleOrdinal.Value.ToString(CultureInfo.InvariantCulture));
+            }
             builder.Append(',');
         }
 
@@ -271,24 +276,51 @@ public class GifController : ControllerBase
     private static IEnumerable<MediaStream> GetSubtitleStreams(BaseItem item)
         => item
             .GetMediaStreams()
-            .Where(stream => stream.Type == MediaStreamType.Subtitle && !stream.IsExternal);
+            .Where(stream => stream.Type == MediaStreamType.Subtitle);
 
-    private static (bool IsValid, string? ErrorMessage, int? FfmpegSubtitleOrdinal) ResolveSubtitleSelection(BaseItem item, int? subtitleStreamIndex)
+    private static SubtitleSelection ResolveSubtitleSelection(BaseItem item, int? subtitleStreamIndex)
     {
         if (!subtitleStreamIndex.HasValue)
         {
-            return (true, null, null);
+            return new SubtitleSelection(true, null, null, null);
         }
 
         var subtitleStreams = GetSubtitleStreams(item).ToList();
-        var ffmpegSubtitleOrdinal = subtitleStreams.FindIndex(stream => stream.Index == subtitleStreamIndex.Value);
-        if (ffmpegSubtitleOrdinal < 0)
+        var selectedSubtitle = subtitleStreams.FirstOrDefault(stream => stream.Index == subtitleStreamIndex.Value);
+        if (selectedSubtitle is null)
         {
-            return (false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' does not exist as an internal subtitle stream on the selected item.", null);
+            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' does not exist as a subtitle stream on the selected item.", null, null);
         }
 
-        return (true, null, ffmpegSubtitleOrdinal);
+        if (selectedSubtitle.IsExternal)
+        {
+            if (string.IsNullOrWhiteSpace(selectedSubtitle.Path))
+            {
+                return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' is external but does not expose a file path.", null, null);
+            }
+
+            return new SubtitleSelection(true, null, null, selectedSubtitle.Path);
+        }
+
+        var ffmpegSubtitleOrdinal = subtitleStreams
+            .Where(stream => !stream.IsExternal)
+            .Select((stream, index) => new { stream.Index, Ordinal = index })
+            .FirstOrDefault(stream => stream.Index == subtitleStreamIndex.Value)?
+            .Ordinal;
+
+        if (!ffmpegSubtitleOrdinal.HasValue)
+        {
+            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' could not be mapped to an ffmpeg subtitle stream ordinal.", null, null);
+        }
+
+        return new SubtitleSelection(true, null, ffmpegSubtitleOrdinal.Value, null);
     }
+
+    private sealed record SubtitleSelection(
+        bool IsValid,
+        string? ErrorMessage,
+        int? FfmpegSubtitleOrdinal,
+        string? ExternalSubtitlePath);
 
     private static string EscapeFilterValue(string value)
     {

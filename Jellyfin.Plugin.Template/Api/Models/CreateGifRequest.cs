@@ -38,7 +38,7 @@ public class CreateGifRequest
     public int Fps { get; set; }
 
     /// <summary>
-    /// Gets or sets the internal subtitle stream index to burn into the generated gif.
+    /// Gets or sets the subtitle stream index to burn into the generated gif.
     /// </summary>
     public int? SubtitleStreamIndex { get; set; }
 }

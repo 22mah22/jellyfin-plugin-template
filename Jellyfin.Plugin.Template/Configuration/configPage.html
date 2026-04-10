@@ -163,24 +163,34 @@
             }
 
             function subtitleLabel(option) {
+                var streamIndex = option.streamIndex ?? option.StreamIndex;
+                var language = option.language ?? option.Language;
+                var displayTitle = option.displayTitle ?? option.DisplayTitle;
+                var isDefault = option.isDefault ?? option.IsDefault;
+                var isForced = option.isForced ?? option.IsForced;
+                var isExternal = option.isExternal ?? option.IsExternal;
                 var parts = [];
-                if (option.language) {
-                    parts.push(option.language);
+                if (language) {
+                    parts.push(language);
                 }
 
-                if (option.displayTitle) {
-                    parts.push(option.displayTitle);
+                if (displayTitle) {
+                    parts.push(displayTitle);
                 }
 
-                if (option.isDefault) {
+                if (isExternal) {
+                    parts.push('External');
+                }
+
+                if (isDefault) {
                     parts.push('Default');
                 }
 
-                if (option.isForced) {
+                if (isForced) {
                     parts.push('Forced');
                 }
 
-                return parts.length ? parts.join(' - ') : ('Subtitle stream ' + option.streamIndex);
+                return parts.length ? parts.join(' - ') : ('Subtitle stream ' + streamIndex);
             }
 
             function resetSubtitleSelect(message) {
@@ -195,8 +205,9 @@
                 subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
 
                 subtitles.forEach(function(option) {
+                    var streamIndex = option.streamIndex ?? option.StreamIndex;
                     var streamOption = document.createElement('option');
-                    streamOption.value = option.streamIndex;
+                    streamOption.value = streamIndex;
                     streamOption.textContent = subtitleLabel(option);
                     subtitleSelect.appendChild(streamOption);
                 });
@@ -228,7 +239,7 @@
                 }).then(function(data) {
                     var subtitles = data.subtitles || data.Subtitles || [];
                     if (!subtitles.length) {
-                        resetSubtitleSelect('No internal subtitle streams found for this item.');
+                        resetSubtitleSelect('No subtitle streams found for this item.');
                         return;
                     }
 

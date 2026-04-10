@@ -29,4 +29,9 @@ public class SubtitleStreamOption
     /// Gets or sets a value indicating whether this stream is marked forced.
     /// </summary>
     public bool IsForced { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this subtitle stream is external.
+    /// </summary>
+    public bool IsExternal { get; set; }
 }
