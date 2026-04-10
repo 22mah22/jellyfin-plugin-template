@@ -265,7 +265,7 @@ public class GifController : ControllerBase
             }
             else
             {
-                builder.Append("'");
+                builder.Append('\'');
             }
 
             builder.Append(',');
@@ -349,12 +349,6 @@ public class GifController : ControllerBase
 
         return new SubtitleSelection(true, null, ffmpegSubtitleOrdinal.Value, null);
     }
-
-    private sealed record SubtitleSelection(
-        bool IsValid,
-        string? ErrorMessage,
-        int? FfmpegSubtitleOrdinal,
-        string? ExternalSubtitlePath);
 
     private static string EscapeFilterValue(string value)
     {
@@ -495,4 +489,10 @@ public class GifController : ControllerBase
         yield return "/app/jellyfin-ffmpeg/ffmpeg";
         yield return "/usr/bin/ffmpeg";
     }
+
+    private sealed record SubtitleSelection(
+        bool IsValid,
+        string? ErrorMessage,
+        int? FfmpegSubtitleOrdinal,
+        string? ExternalSubtitlePath);
 }
