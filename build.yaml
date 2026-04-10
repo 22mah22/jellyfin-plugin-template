@@ -3,7 +3,7 @@ name: "Gif Generator"
 guid: "eb5d7894-8eef-4b36-aa6f-5d124e828ce1"
 version: "1.0.0.0"
 targetAbi: "10.11.0.0"
-framework: "net8.0"
+framework: "net9.0"
 overview: "Generate GIF clips from Jellyfin videos"
 description: >
   Authenticated users can generate GIF clips from Jellyfin videos
@@ -13,4 +13,4 @@ owner: "jellyfin"
 artifacts:
 - "Jellyfin.Plugin.Template.dll"
 changelog: >
-  Rebuilt against Jellyfin 10.11.x ecosystem/runtime (ABI 10.11, net8.0).
+  Rebuilt against Jellyfin 10.11.x ecosystem/runtime (ABI 10.11, net9.0).
