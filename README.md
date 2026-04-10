@@ -7,6 +7,7 @@ This repository now contains a Jellyfin plugin that lets authenticated users gen
 - Authenticated API for GIF creation.
 - Uses Jellyfin's configured encoder path (`EncoderAppPath`) when available and falls back to Jellyfin-aware ffmpeg discovery (`JELLYFIN_FFMPEG`, `FFMPEG_PATH`, then `ffmpeg` on `PATH`).
 - Input parameters: source video item id, clip start time, and clip length.
+- Optional internal subtitle stream selection for burn-in rendering.
 - Secure GIF download endpoint for generated files.
 - Configurable maximum GIF length, default FPS, and default width.
 
@@ -26,7 +27,8 @@ Example request body:
   "startSeconds": 12.5,
   "lengthSeconds": 4.0,
   "width": 480,
-  "fps": 12
+  "fps": 12,
+  "subtitleStreamIndex": 3
 }
 ```
 
@@ -45,6 +47,36 @@ Example response:
 
 Returns the generated GIF file.
 
+### List subtitle streams
+
+`GET /Plugins/GifGenerator/Subtitles/{itemId}`
+
+Example response:
+
+```json
+{
+  "itemId": "11111111-2222-3333-4444-555555555555",
+  "subtitles": [
+    {
+      "streamIndex": 2,
+      "language": "eng",
+      "displayTitle": "English",
+      "isDefault": true,
+      "isForced": false
+    },
+    {
+      "streamIndex": 3,
+      "language": "nor",
+      "displayTitle": "Norwegian",
+      "isDefault": false,
+      "isForced": false
+    }
+  ]
+}
+```
+
+`subtitleStreamIndex` is optional in create requests. If provided, the selected internal subtitle stream is burned directly into GIF frames. GIF files do not support switchable subtitle tracks after generation.
+
 ## Configuration UI
 
 Open the plugin settings page in Jellyfin to control:
@@ -54,6 +86,7 @@ Open the plugin settings page in Jellyfin to control:
 - Default width
 
 The same page now includes a **Test GIF Generation** form so you can quickly exercise the API from the Jellyfin dashboard (while authenticated).
+It also includes a subtitle picker that loads internal subtitle streams for the selected item id.
 
 ## Installing via a custom plugin repository
 

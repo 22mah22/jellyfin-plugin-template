@@ -8,7 +8,9 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Template.Api.Models;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -74,6 +76,12 @@ public class GifController : ControllerBase
             return NotFound("Video item was not found or does not have a local file path.");
         }
 
+        var subtitleValidation = ValidateSubtitleStream(item, request.SubtitleStreamIndex);
+        if (!subtitleValidation.IsValid)
+        {
+            return BadRequest(subtitleValidation.ErrorMessage);
+        }
+
         var ffmpegPath = ResolveFfmpegPath();
 
         var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
@@ -85,7 +93,15 @@ public class GifController : ControllerBase
         var fps = request.Fps > 0 ? request.Fps : plugin.Configuration.DefaultFps;
         var width = request.Width > 0 ? request.Width : plugin.Configuration.DefaultWidth;
 
-        var processInfo = BuildProcessStartInfo(ffmpegPath, request.StartSeconds, request.LengthSeconds, item.Path, fps, width, outputPath);
+        var processInfo = BuildProcessStartInfo(
+            ffmpegPath,
+            request.StartSeconds,
+            request.LengthSeconds,
+            item.Path,
+            fps,
+            width,
+            outputPath,
+            request.SubtitleStreamIndex);
 
         using var process = new Process { StartInfo = processInfo };
         try
@@ -112,6 +128,40 @@ public class GifController : ControllerBase
         {
             FileName = outputFileName,
             DownloadUrl = $"Plugins/GifGenerator/Download/{Uri.EscapeDataString(outputFileName)}"
+        });
+    }
+
+    /// <summary>
+    /// Gets the available internal subtitle streams for a video item.
+    /// </summary>
+    /// <param name="itemId">The video item id.</param>
+    /// <returns>The available subtitle streams for the item.</returns>
+    [HttpGet("Subtitles/{itemId:guid}")]
+    [ProducesResponseType<GetSubtitleStreamsResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<GetSubtitleStreamsResponse> GetSubtitleStreams([FromRoute] Guid itemId)
+    {
+        var item = _libraryManager.GetItemById(itemId);
+        if (item is null || item.MediaType != MediaType.Video)
+        {
+            return NotFound("Video item was not found.");
+        }
+
+        var subtitles = GetSubtitleStreams(item)
+            .Select(stream => new SubtitleStreamOption
+            {
+                StreamIndex = stream.Index,
+                Language = stream.Language,
+                DisplayTitle = stream.DisplayTitle,
+                IsDefault = stream.IsDefault,
+                IsForced = stream.IsForced
+            })
+            .ToList();
+
+        return Ok(new GetSubtitleStreamsResponse
+        {
+            ItemId = itemId,
+            Subtitles = subtitles
         });
     }
 
@@ -165,11 +215,12 @@ public class GifController : ControllerBase
         string inputPath,
         int fps,
         int width,
-        string outputPath)
+        string outputPath,
+        int? subtitleStreamIndex)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        var videoFilter = BuildVideoFilter(fps, width);
+        var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleStreamIndex);
 
         var processInfo = new ProcessStartInfo
         {
@@ -197,15 +248,64 @@ public class GifController : ControllerBase
         return processInfo;
     }
 
-    private static string BuildVideoFilter(int fps, int width)
+    private static string BuildVideoFilter(int fps, int width, string inputPath, int? subtitleStreamIndex)
     {
         var builder = new StringBuilder();
+        if (subtitleStreamIndex.HasValue)
+        {
+            builder.Append("subtitles='");
+            builder.Append(EscapeFilterValue(inputPath));
+            builder.Append("':si=");
+            builder.Append(subtitleStreamIndex.Value.ToString(CultureInfo.InvariantCulture));
+            builder.Append(',');
+        }
+
         builder.Append("fps=");
         builder.Append(fps.ToString(CultureInfo.InvariantCulture));
         builder.Append(",scale=");
         builder.Append(width.ToString(CultureInfo.InvariantCulture));
         builder.Append(":-1:flags=lanczos");
         return builder.ToString();
+    }
+
+    private static IEnumerable<MediaStream> GetSubtitleStreams(BaseItem item)
+        => item.GetMediaStreams().Where(stream => stream.Type == MediaStreamType.Subtitle);
+
+    private static (bool IsValid, string? ErrorMessage) ValidateSubtitleStream(BaseItem item, int? subtitleStreamIndex)
+    {
+        if (!subtitleStreamIndex.HasValue)
+        {
+            return (true, null);
+        }
+
+        var selectedStream = item
+            .GetMediaStreams()
+            .FirstOrDefault(stream => stream.Index == subtitleStreamIndex.Value);
+
+        if (selectedStream is null)
+        {
+            return (false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' does not exist on the selected item.");
+        }
+
+        if (selectedStream.Type != MediaStreamType.Subtitle)
+        {
+            return (false, $"Stream index '{subtitleStreamIndex.Value}' is not a subtitle stream.");
+        }
+
+        return (true, null);
+    }
+
+    private static string EscapeFilterValue(string value)
+    {
+        var escaped = value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace(":", "\\:", StringComparison.Ordinal)
+            .Replace("'", "\\'", StringComparison.Ordinal)
+            .Replace(",", "\\,", StringComparison.Ordinal)
+            .Replace("[", "\\[", StringComparison.Ordinal)
+            .Replace("]", "\\]", StringComparison.Ordinal)
+            .Replace(";", "\\;", StringComparison.Ordinal);
+        return escaped;
     }
 
     private string ResolveFfmpegPath()
