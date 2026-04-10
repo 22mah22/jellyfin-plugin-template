@@ -5,7 +5,7 @@ This repository now contains a Jellyfin plugin that lets authenticated users gen
 ## Features
 
 - Authenticated API for GIF creation.
-- Uses Jellyfin's configured encoder path (`EncoderAppPath`) so generation runs through the server ffmpeg setup.
+- Uses Jellyfin's configured encoder path (`EncoderAppPath`) when available and falls back to Jellyfin-aware ffmpeg discovery (`JELLYFIN_FFMPEG`, `FFMPEG_PATH`, then `ffmpeg` on `PATH`).
 - Input parameters: source video item id, clip start time, and clip length.
 - Secure GIF download endpoint for generated files.
 - Configurable maximum GIF length, default FPS, and default width.

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -72,11 +73,7 @@ public class GifController : ControllerBase
             return NotFound("Video item was not found or does not have a local file path.");
         }
 
-        var ffmpegPath = _serverConfigurationManager.GetEncodingOptions().EncoderAppPath;
-        if (string.IsNullOrWhiteSpace(ffmpegPath))
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, "Jellyfin ffmpeg path is not configured.");
-        }
+        var ffmpegPath = ResolveFfmpegPath();
 
         var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
         Directory.CreateDirectory(outputDirectory);
@@ -90,7 +87,16 @@ public class GifController : ControllerBase
         var processInfo = BuildProcessStartInfo(ffmpegPath, request.StartSeconds, request.LengthSeconds, item.Path, fps, width, outputPath);
 
         using var process = new Process { StartInfo = processInfo };
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                $"Unable to start ffmpeg at '{ffmpegPath}'. Configure Jellyfin's encoder path to use Jellyfin's ffmpeg binary.");
+        }
 
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
@@ -199,5 +205,30 @@ public class GifController : ControllerBase
         builder.Append(width.ToString(CultureInfo.InvariantCulture));
         builder.Append(":-1:flags=lanczos");
         return builder.ToString();
+    }
+
+    private string ResolveFfmpegPath()
+    {
+        var configuredPath = _serverConfigurationManager.GetEncodingOptions().EncoderAppPath;
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        var jellyfinFfmpegPath = Environment.GetEnvironmentVariable("JELLYFIN_FFMPEG");
+        if (!string.IsNullOrWhiteSpace(jellyfinFfmpegPath))
+        {
+            return jellyfinFfmpegPath;
+        }
+
+        var ffmpegPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
+        if (!string.IsNullOrWhiteSpace(ffmpegPath))
+        {
+            return ffmpegPath;
+        }
+
+        // Fall back to executable discovery on PATH.
+        // Jellyfin containers typically expose their bundled ffmpeg in PATH.
+        return "ffmpeg";
     }
 }
