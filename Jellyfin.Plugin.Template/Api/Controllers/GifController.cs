@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -280,21 +281,30 @@ public class GifController : ControllerBase
 
     private static string? GetSubtitleDisplayTitle(MediaStream stream)
     {
-        var streamType = stream.GetType();
-
-        var displayTitle = streamType.GetProperty("DisplayTitle")?.GetValue(stream) as string;
+        var displayTitle = GetStreamStringPropertyValue(stream, "DisplayTitle");
         if (!string.IsNullOrWhiteSpace(displayTitle))
         {
             return displayTitle;
         }
 
-        var title = streamType.GetProperty("Title")?.GetValue(stream) as string;
+        var title = GetStreamStringPropertyValue(stream, "Title");
         if (!string.IsNullOrWhiteSpace(title))
         {
             return title;
         }
 
         return null;
+    }
+
+    private static string? GetStreamStringPropertyValue(MediaStream stream, string propertyName)
+    {
+        var property = stream.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property?.PropertyType != typeof(string))
+        {
+            return null;
+        }
+
+        return property.GetValue(stream) as string;
     }
 
     private static IEnumerable<MediaStream> GetSubtitleStreams(BaseItem item)
