@@ -64,7 +64,7 @@ public class GifController : ControllerBase
         }
 
         var item = _libraryManager.GetItemById(request.ItemId);
-        if (item is null || item.MediaType != MediaType.Video || string.IsNullOrWhiteSpace(item.Path))
+        if (item is null || !string.Equals(item.MediaType, "Video", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(item.Path))
         {
             return NotFound("Video item was not found or does not have a local file path.");
         }
@@ -126,6 +126,14 @@ public class GifController : ControllerBase
     public ActionResult DownloadGif([FromRoute] string fileName)
     {
         var decodedFileName = Uri.UnescapeDataString(fileName);
+
+        if (string.IsNullOrWhiteSpace(decodedFileName)
+            || decodedFileName.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0
+            || !string.Equals(decodedFileName, Path.GetFileName(decodedFileName), StringComparison.Ordinal))
+        {
+            return NotFound();
+        }
+
         var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
         var fullPath = Path.GetFullPath(Path.Combine(outputDirectory, decodedFileName));
 
@@ -147,7 +155,13 @@ public class GifController : ControllerBase
         builder.Append(" -i ");
         builder.Append('"').Append(inputPath.Replace("\"", "\\\"", StringComparison.Ordinal)).Append('"');
         builder.Append(" -vf ");
-        builder.Append('"').Append($"fps={fps},scale={width}:-1:flags=lanczos").Append('"');
+        builder.Append('"');
+        builder.Append("fps=");
+        builder.Append(fps.ToString(CultureInfo.InvariantCulture));
+        builder.Append(",scale=");
+        builder.Append(width.ToString(CultureInfo.InvariantCulture));
+        builder.Append(":-1:flags=lanczos");
+        builder.Append('"');
         builder.Append(" -y ");
         builder.Append('"').Append(outputPath.Replace("\"", "\\\"", StringComparison.Ordinal)).Append('"');
 
