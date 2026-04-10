@@ -20,6 +20,8 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 [Route("Plugins/GifGenerator")]
 public class GifController : ControllerBase
 {
+    private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
     private readonly ILibraryManager _libraryManager;
     private readonly IApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
@@ -85,16 +87,7 @@ public class GifController : ControllerBase
         var fps = request.Fps > 0 ? request.Fps : plugin.Configuration.DefaultFps;
         var width = request.Width > 0 ? request.Width : plugin.Configuration.DefaultWidth;
 
-        var ffmpegArguments = BuildArguments(request.StartSeconds, request.LengthSeconds, item.Path, fps, width, outputPath);
-        var processInfo = new ProcessStartInfo
-        {
-            FileName = ffmpegPath,
-            Arguments = ffmpegArguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var processInfo = BuildProcessStartInfo(ffmpegPath, request.StartSeconds, request.LengthSeconds, item.Path, fps, width, outputPath);
 
         using var process = new Process { StartInfo = processInfo };
         process.Start();
@@ -158,28 +151,53 @@ public class GifController : ControllerBase
         return PhysicalFile(matchingGifPath, "image/gif", enableRangeProcessing: true);
     }
 
-    private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static ProcessStartInfo BuildProcessStartInfo(
+        string ffmpegPath,
+        double startSeconds,
+        double lengthSeconds,
+        string inputPath,
+        int fps,
+        int width,
+        string outputPath)
+    {
+        var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+        var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+        var videoFilter = BuildVideoFilter(fps, width);
 
-    private static string BuildArguments(double startSeconds, double lengthSeconds, string inputPath, int fps, int width, string outputPath)
+        var processInfo = new ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        processInfo.ArgumentList.Add("-hide_banner");
+        processInfo.ArgumentList.Add("-loglevel");
+        processInfo.ArgumentList.Add("error");
+        processInfo.ArgumentList.Add("-ss");
+        processInfo.ArgumentList.Add(start);
+        processInfo.ArgumentList.Add("-t");
+        processInfo.ArgumentList.Add(length);
+        processInfo.ArgumentList.Add("-i");
+        processInfo.ArgumentList.Add(inputPath);
+        processInfo.ArgumentList.Add("-vf");
+        processInfo.ArgumentList.Add(videoFilter);
+        processInfo.ArgumentList.Add("-y");
+        processInfo.ArgumentList.Add(outputPath);
+
+        return processInfo;
+    }
+
+    private static string BuildVideoFilter(int fps, int width)
     {
         var builder = new StringBuilder();
-        builder.Append("-hide_banner -loglevel error -ss ");
-        builder.Append(startSeconds.ToString("0.###", CultureInfo.InvariantCulture));
-        builder.Append(" -t ");
-        builder.Append(lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture));
-        builder.Append(" -i ");
-        builder.Append('"').Append(inputPath.Replace("\"", "\\\"", StringComparison.Ordinal)).Append('"');
-        builder.Append(" -vf ");
-        builder.Append('"');
         builder.Append("fps=");
         builder.Append(fps.ToString(CultureInfo.InvariantCulture));
         builder.Append(",scale=");
         builder.Append(width.ToString(CultureInfo.InvariantCulture));
         builder.Append(":-1:flags=lanczos");
-        builder.Append('"');
-        builder.Append(" -y ");
-        builder.Append('"').Append(outputPath.Replace("\"", "\\\"", StringComparison.Ordinal)).Append('"');
-
         return builder.ToString();
     }
 }
