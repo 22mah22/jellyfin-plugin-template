@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -152,7 +153,7 @@ public class GifController : ControllerBase
             {
                 StreamIndex = stream.Index,
                 Language = stream.Language,
-                DisplayTitle = stream.DisplayTitle,
+                DisplayTitle = GetSubtitleDisplayTitle(stream),
                 IsDefault = stream.IsDefault,
                 IsForced = stream.IsForced,
                 IsExternal = stream.IsExternal
@@ -264,7 +265,7 @@ public class GifController : ControllerBase
             }
             else
             {
-                builder.Append("'");
+                builder.Append('\'');
             }
 
             builder.Append(',');
@@ -276,6 +277,34 @@ public class GifController : ControllerBase
         builder.Append(width.ToString(CultureInfo.InvariantCulture));
         builder.Append(":-1:flags=lanczos");
         return builder.ToString();
+    }
+
+    private static string? GetSubtitleDisplayTitle(MediaStream stream)
+    {
+        var displayTitle = GetStreamStringPropertyValue(stream, "DisplayTitle");
+        if (!string.IsNullOrWhiteSpace(displayTitle))
+        {
+            return displayTitle;
+        }
+
+        var title = GetStreamStringPropertyValue(stream, "Title");
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            return title;
+        }
+
+        return null;
+    }
+
+    private static string? GetStreamStringPropertyValue(MediaStream stream, string propertyName)
+    {
+        var property = stream.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property?.PropertyType != typeof(string))
+        {
+            return null;
+        }
+
+        return property.GetValue(stream) as string;
     }
 
     private static IEnumerable<MediaStream> GetSubtitleStreams(BaseItem item)
@@ -320,12 +349,6 @@ public class GifController : ControllerBase
 
         return new SubtitleSelection(true, null, ffmpegSubtitleOrdinal.Value, null);
     }
-
-    private sealed record SubtitleSelection(
-        bool IsValid,
-        string? ErrorMessage,
-        int? FfmpegSubtitleOrdinal,
-        string? ExternalSubtitlePath);
 
     private static string EscapeFilterValue(string value)
     {
@@ -466,4 +489,10 @@ public class GifController : ControllerBase
         yield return "/app/jellyfin-ffmpeg/ffmpeg";
         yield return "/usr/bin/ffmpeg";
     }
+
+    private sealed record SubtitleSelection(
+        bool IsValid,
+        string? ErrorMessage,
+        int? FfmpegSubtitleOrdinal,
+        string? ExternalSubtitlePath);
 }
