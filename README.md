@@ -54,3 +54,37 @@ Open the plugin settings page in Jellyfin to control:
 - Default width
 
 The same page now includes a **Test GIF Generation** form so you can quickly exercise the API from the Jellyfin dashboard (while authenticated).
+
+## Installing via a custom plugin repository
+
+Jellyfin expects a **JSON manifest URL**, not the GitHub repository home page.
+
+Use this repository URL in **Dashboard → Plugins → Repositories**:
+
+`https://raw.githubusercontent.com/22mah22/jellyfin-plugin-template/master/manifest.json`
+
+If you point Jellyfin to `https://github.com/22mah22/jellyfin-plugin-template`, Jellyfin will fail with a deserialization error because that URL returns HTML, not the manifest JSON.
+
+### What must exist in this repo
+
+For Jellyfin to install from a custom repository, the repo must expose:
+
+1. `manifest.json` in the plugin-repository format (array of plugin entries).
+2. A downloadable plugin package zip referenced by `versions[].sourceUrl`.
+
+### Releasing a new installable version
+
+This repo now includes the **📦 Build Repository Package** GitHub Actions workflow (`.github/workflows/repository-release.yaml`) to automate packaging and manifest updates.
+
+1. Open **Actions → 📦 Build Repository Package → Run workflow**.
+2. Set:
+   - `version` (example `1.0.1.0`)
+   - `target_abi` (usually `10.11.0.0` for Jellyfin 10.11.x)
+3. The workflow will:
+   - Build the plugin zip.
+   - Compute MD5 checksum.
+   - Update `manifest.json`.
+   - Commit the manifest change.
+   - Create a GitHub release and upload `jellyfin-plugin-gif-generator.zip`.
+
+After that, Jellyfin clients using the manifest URL above can install/update from the repository.

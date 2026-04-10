@@ -1,0 +1,20 @@
+[
+  {
+    "guid": "eb5d7894-8eef-4b36-aa6f-5d124e828ce1",
+    "name": "Gif Generator",
+    "description": "Generate authenticated GIF clips from Jellyfin library items.",
+    "overview": "Create GIF clips from local videos via Jellyfin's ffmpeg configuration.",
+    "owner": "22mah22",
+    "category": "General",
+    "versions": [
+      {
+        "version": "1.0.0.0",
+        "changelog": "Initial custom repository release.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/22mah22/jellyfin-plugin-template/releases/latest/download/jellyfin-plugin-gif-generator.zip",
+        "checksum": "",
+        "timestamp": "2026-04-10 00:00:00"
+      }
+    ]
+  }
+]
