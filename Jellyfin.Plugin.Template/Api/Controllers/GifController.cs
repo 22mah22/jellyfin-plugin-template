@@ -76,10 +76,10 @@ public class GifController : ControllerBase
             return NotFound("Video item was not found or does not have a local file path.");
         }
 
-        var subtitleValidation = ValidateSubtitleStream(item, request.SubtitleStreamIndex);
-        if (!subtitleValidation.IsValid)
+        var subtitleSelection = ResolveSubtitleSelection(item, request.SubtitleStreamIndex);
+        if (!subtitleSelection.IsValid)
         {
-            return BadRequest(subtitleValidation.ErrorMessage);
+            return BadRequest(subtitleSelection.ErrorMessage);
         }
 
         var ffmpegPath = ResolveFfmpegPath();
@@ -101,7 +101,7 @@ public class GifController : ControllerBase
             fps,
             width,
             outputPath,
-            request.SubtitleStreamIndex);
+            subtitleSelection.FfmpegSubtitleOrdinal);
 
         using var process = new Process { StartInfo = processInfo };
         try
@@ -269,30 +269,25 @@ public class GifController : ControllerBase
     }
 
     private static IEnumerable<MediaStream> GetSubtitleStreams(BaseItem item)
-        => item.GetMediaStreams().Where(stream => stream.Type == MediaStreamType.Subtitle);
+        => item
+            .GetMediaStreams()
+            .Where(stream => stream.Type == MediaStreamType.Subtitle && !stream.IsExternal);
 
-    private static (bool IsValid, string? ErrorMessage) ValidateSubtitleStream(BaseItem item, int? subtitleStreamIndex)
+    private static (bool IsValid, string? ErrorMessage, int? FfmpegSubtitleOrdinal) ResolveSubtitleSelection(BaseItem item, int? subtitleStreamIndex)
     {
         if (!subtitleStreamIndex.HasValue)
         {
-            return (true, null);
+            return (true, null, null);
         }
 
-        var selectedStream = item
-            .GetMediaStreams()
-            .FirstOrDefault(stream => stream.Index == subtitleStreamIndex.Value);
-
-        if (selectedStream is null)
+        var subtitleStreams = GetSubtitleStreams(item).ToList();
+        var ffmpegSubtitleOrdinal = subtitleStreams.FindIndex(stream => stream.Index == subtitleStreamIndex.Value);
+        if (ffmpegSubtitleOrdinal < 0)
         {
-            return (false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' does not exist on the selected item.");
+            return (false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' does not exist as an internal subtitle stream on the selected item.", null);
         }
 
-        if (selectedStream.Type != MediaStreamType.Subtitle)
-        {
-            return (false, $"Stream index '{subtitleStreamIndex.Value}' is not a subtitle stream.");
-        }
-
-        return (true, null);
+        return (true, null, ffmpegSubtitleOrdinal);
     }
 
     private static string EscapeFilterValue(string value)
