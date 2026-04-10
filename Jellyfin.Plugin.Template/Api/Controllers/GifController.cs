@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Jellyfin.Plugin.Template.Api.Models;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
@@ -19,7 +20,7 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 public class GifController : ControllerBase
 {
     private readonly ILibraryManager _libraryManager;
-    private readonly IServerApplicationPaths _serverApplicationPaths;
+    private readonly IApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
 
     /// <summary>
@@ -30,7 +31,7 @@ public class GifController : ControllerBase
     /// <param name="serverConfigurationManager">The server configuration manager.</param>
     public GifController(
         ILibraryManager libraryManager,
-        IServerApplicationPaths serverApplicationPaths,
+        IApplicationPaths serverApplicationPaths,
         IServerConfigurationManager serverConfigurationManager)
     {
         _libraryManager = libraryManager;
