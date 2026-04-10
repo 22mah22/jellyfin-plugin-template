@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Jellyfin.Data.Enums;
@@ -210,25 +211,84 @@ public class GifController : ControllerBase
     private string ResolveFfmpegPath()
     {
         var configuredPath = _serverConfigurationManager.GetEncodingOptions().EncoderAppPath;
-        if (!string.IsNullOrWhiteSpace(configuredPath))
+        if (IsExecutableFile(configuredPath))
         {
             return configuredPath;
         }
 
         var jellyfinFfmpegPath = Environment.GetEnvironmentVariable("JELLYFIN_FFMPEG");
-        if (!string.IsNullOrWhiteSpace(jellyfinFfmpegPath))
+        if (IsExecutableFile(jellyfinFfmpegPath))
         {
             return jellyfinFfmpegPath;
         }
 
         var ffmpegPath = Environment.GetEnvironmentVariable("FFMPEG_PATH");
-        if (!string.IsNullOrWhiteSpace(ffmpegPath))
+        if (IsExecutableFile(ffmpegPath))
         {
             return ffmpegPath;
         }
 
-        // Fall back to executable discovery on PATH.
-        // Jellyfin containers typically expose their bundled ffmpeg in PATH.
-        return "ffmpeg";
+        var pathResolvedFfmpeg = ResolveFromPathEnvironment();
+        if (pathResolvedFfmpeg is not null)
+        {
+            return pathResolvedFfmpeg;
+        }
+
+        foreach (var candidate in GetKnownBundledFfmpegPaths())
+        {
+            if (IsExecutableFile(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffmpeg.exe" : "ffmpeg";
+    }
+
+    private static bool IsExecutableFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var trimmedPath = path.Trim();
+        return Path.IsPathRooted(trimmedPath) && System.IO.File.Exists(trimmedPath);
+    }
+
+    private static string? ResolveFromPathEnvironment()
+    {
+        var fileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffmpeg.exe" : "ffmpeg";
+        var pathValue = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathValue))
+        {
+            return null;
+        }
+
+        foreach (var directory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var candidate = Path.Combine(directory, fileName);
+            if (System.IO.File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> GetKnownBundledFfmpegPaths()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            yield return Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+            yield return Path.Combine(AppContext.BaseDirectory, "jellyfin-ffmpeg", "ffmpeg.exe");
+            yield break;
+        }
+
+        yield return "/usr/lib/jellyfin-ffmpeg/ffmpeg";
+        yield return "/usr/local/lib/jellyfin-ffmpeg/ffmpeg";
+        yield return "/app/jellyfin-ffmpeg/ffmpeg";
+        yield return "/usr/bin/ffmpeg";
     }
 }
