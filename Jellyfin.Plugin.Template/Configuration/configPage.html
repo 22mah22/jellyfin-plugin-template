@@ -220,9 +220,20 @@
 
                         return response.json();
                     }).then(function(data) {
-                        var downloadUrl = buildApiUrl('/' + data.downloadUrl);
-                        setStatus('GIF generated successfully.', false);
-                        setResult(downloadUrl, data.fileName);
+                        var responseDownloadUrl = data.downloadUrl || data.DownloadUrl;
+                        var responseFileName = data.fileName || data.FileName;
+
+                        if (!responseDownloadUrl || !responseFileName) {
+                            throw new Error('GIF response did not include download metadata.');
+                        }
+
+                        var normalizedDownloadUrl = responseDownloadUrl.charAt(0) === '/'
+                            ? responseDownloadUrl
+                            : '/' + responseDownloadUrl;
+                        var downloadUrl = buildApiUrl(normalizedDownloadUrl);
+
+                        setStatus('Gif generated successfully', false);
+                        setResult(downloadUrl, responseFileName);
                     }).catch(function(err) {
                         setStatus('Failed: ' + err.message, true);
                     });
