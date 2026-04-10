@@ -139,12 +139,26 @@
                 link.setAttribute('target', '_blank');
 
                 var preview = document.createElement('img');
-                preview.src = downloadUrl + '?_=' + Date.now();
+                preview.src = downloadUrl + '&_=' + Date.now();
                 preview.alt = 'Generated GIF preview';
 
                 result.appendChild(link);
                 result.appendChild(document.createElement('br'));
                 result.appendChild(preview);
+            }
+
+            function getAuthToken() {
+                if (!window.ApiClient || !ApiClient.accessToken) {
+                    return '';
+                }
+
+                return ApiClient.accessToken();
+            }
+
+            function buildApiUrl(path) {
+                var token = getAuthToken();
+                var separator = path.indexOf('?') === -1 ? '?' : '&';
+                return path + (token ? (separator + 'api_key=' + encodeURIComponent(token)) : '');
             }
 
             document.querySelector('#GifGeneratorConfigPage')
@@ -190,7 +204,7 @@
                         fps: parsePositiveInt('#TestFps')
                     };
 
-                    fetch('/Plugins/GifGenerator/Create', {
+                    fetch(buildApiUrl('/Plugins/GifGenerator/Create'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -206,7 +220,7 @@
 
                         return response.json();
                     }).then(function(data) {
-                        var downloadUrl = '/' + data.downloadUrl;
+                        var downloadUrl = buildApiUrl('/' + data.downloadUrl);
                         setStatus('GIF generated successfully.', false);
                         setResult(downloadUrl, data.fileName);
                     }).catch(function(err) {
