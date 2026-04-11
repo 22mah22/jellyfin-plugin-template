@@ -647,7 +647,8 @@ public class GifController : ControllerBase
             return ValidateSubtitleOffsetBounds(seconds);
         }
 
-        var normalized = rawValue.StartsWith('+') || rawValue.StartsWith('-')
+        var hasExplicitSign = rawValue.Length > 0 && (rawValue[0] == '+' || rawValue[0] == '-');
+        var normalized = hasExplicitSign
             ? rawValue
             : "+" + rawValue;
 
