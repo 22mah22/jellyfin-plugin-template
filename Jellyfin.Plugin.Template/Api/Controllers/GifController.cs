@@ -236,11 +236,24 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add("-hide_banner");
         processInfo.ArgumentList.Add("-loglevel");
         processInfo.ArgumentList.Add("error");
-        // Keep seek arguments after input so subtitle timestamps stay aligned for burn-in.
-        processInfo.ArgumentList.Add("-i");
-        processInfo.ArgumentList.Add(inputPath);
-        processInfo.ArgumentList.Add("-ss");
-        processInfo.ArgumentList.Add(start);
+        var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
+        if (hasSubtitleBurnIn)
+        {
+            // Keep seek arguments after input so subtitle timestamps stay aligned for burn-in.
+            processInfo.ArgumentList.Add("-i");
+            processInfo.ArgumentList.Add(inputPath);
+            processInfo.ArgumentList.Add("-ss");
+            processInfo.ArgumentList.Add(start);
+        }
+        else
+        {
+            // Fast seek before input dramatically improves performance for large offsets.
+            processInfo.ArgumentList.Add("-ss");
+            processInfo.ArgumentList.Add(start);
+            processInfo.ArgumentList.Add("-i");
+            processInfo.ArgumentList.Add(inputPath);
+        }
+
         processInfo.ArgumentList.Add("-t");
         processInfo.ArgumentList.Add(length);
         processInfo.ArgumentList.Add("-vf");
