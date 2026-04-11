@@ -26,11 +26,14 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 public class GifController : ControllerBase
 {
     private const double MaxSubtitleOffsetSeconds = 30;
+
     private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
     private static readonly Regex SignedSecondsWithUnitPattern = new(
         @"^(?<sign>[+-])?(?<value>\d+(?:\.\d+)?)(?<unit>ms|s)?$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         TimeSpan.FromMilliseconds(100));
+
     private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
     {
         "ass",
@@ -615,12 +618,6 @@ public class GifController : ControllerBase
         yield return "/usr/bin/ffmpeg";
     }
 
-    private sealed record SubtitleSelection(
-        bool IsValid,
-        string? ErrorMessage,
-        int? FfmpegSubtitleOrdinal,
-        string? ExternalSubtitlePath);
-
     private static SubtitleOffsetParseResult ParseSubtitleTimingOffsetSeconds(string? subtitleTimingOffset)
     {
         if (string.IsNullOrWhiteSpace(subtitleTimingOffset))
@@ -705,4 +702,10 @@ public class GifController : ControllerBase
         bool IsValid,
         string? ErrorMessage,
         double Seconds);
+
+    private sealed record SubtitleSelection(
+        bool IsValid,
+        string? ErrorMessage,
+        int? FfmpegSubtitleOrdinal,
+        string? ExternalSubtitlePath);
 }
