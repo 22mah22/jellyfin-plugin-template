@@ -25,7 +25,12 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 [Route("Plugins/GifGenerator")]
 public class GifController : ControllerBase
 {
+    private const double MaxSubtitleOffsetSeconds = 30;
     private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex SignedSecondsWithUnitPattern = new(
+        @"^(?<sign>[+-])?(?<value>\d+(?:\.\d+)?)(?<unit>ms|s)?$",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+        TimeSpan.FromMilliseconds(100));
     private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
     {
         "ass",
@@ -106,6 +111,17 @@ public class GifController : ControllerBase
             return BadRequest($"LengthSeconds cannot exceed {plugin.Configuration.MaxGifLengthSeconds} seconds.");
         }
 
+        var subtitleOffsetResult = ParseSubtitleTimingOffsetSeconds(request.SubtitleTimingOffset);
+        if (!subtitleOffsetResult.IsValid)
+        {
+            return BadRequest(subtitleOffsetResult.ErrorMessage);
+        }
+
+        if (!request.SubtitleStreamIndex.HasValue && Math.Abs(subtitleOffsetResult.Seconds) > 0)
+        {
+            return BadRequest("SubtitleTimingOffset requires SubtitleStreamIndex to be set.");
+        }
+
         var item = _libraryManager.GetItemById(request.ItemId);
         if (item is null || item.MediaType != MediaType.Video || string.IsNullOrWhiteSpace(item.Path))
         {
@@ -137,7 +153,9 @@ public class GifController : ControllerBase
             fps,
             width,
             outputPath,
-            subtitleSelection);
+            subtitleSelection,
+            request.SubtitleFontSize,
+            subtitleOffsetResult.Seconds);
 
         using var process = new Process { StartInfo = processInfo };
         try
@@ -254,11 +272,13 @@ public class GifController : ControllerBase
         int fps,
         int width,
         string outputPath,
-        SubtitleSelection subtitleSelection)
+        SubtitleSelection subtitleSelection,
+        int? subtitleFontSize,
+        double subtitleOffsetSeconds)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection);
+        var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds);
 
         var processInfo = new ProcessStartInfo
         {
@@ -300,9 +320,32 @@ public class GifController : ControllerBase
         return processInfo;
     }
 
-    private static string BuildVideoFilter(int fps, int width, string inputPath, SubtitleSelection subtitleSelection)
+    private static string BuildVideoFilter(
+        int fps,
+        int width,
+        string inputPath,
+        SubtitleSelection subtitleSelection,
+        int? subtitleFontSize,
+        double subtitleOffsetSeconds)
     {
         var builder = new StringBuilder();
+        if (Math.Abs(subtitleOffsetSeconds) > 0)
+        {
+            // Positive subtitle offset means subtitles appear later, so shift video timestamps earlier for subtitle evaluation.
+            builder.Append("setpts=PTS");
+            if (subtitleOffsetSeconds > 0)
+            {
+                builder.Append('-');
+            }
+            else
+            {
+                builder.Append('+');
+            }
+
+            builder.Append(Math.Abs(subtitleOffsetSeconds).ToString("0.###", CultureInfo.InvariantCulture));
+            builder.Append("/TB,");
+        }
+
         if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath))
         {
             builder.Append("subtitles='");
@@ -315,6 +358,13 @@ public class GifController : ControllerBase
             }
             else
             {
+                builder.Append('\'');
+            }
+
+            if (subtitleFontSize.HasValue)
+            {
+                builder.Append(":force_style='");
+                builder.Append(EscapeFilterValue("Fontsize=" + subtitleFontSize.Value.ToString(CultureInfo.InvariantCulture)));
                 builder.Append('\'');
             }
 
@@ -570,4 +620,88 @@ public class GifController : ControllerBase
         string? ErrorMessage,
         int? FfmpegSubtitleOrdinal,
         string? ExternalSubtitlePath);
+
+    private static SubtitleOffsetParseResult ParseSubtitleTimingOffsetSeconds(string? subtitleTimingOffset)
+    {
+        if (string.IsNullOrWhiteSpace(subtitleTimingOffset))
+        {
+            return new SubtitleOffsetParseResult(true, null, 0);
+        }
+
+        var rawValue = subtitleTimingOffset.Trim();
+        var match = SignedSecondsWithUnitPattern.Match(rawValue);
+        if (match.Success)
+        {
+            var value = double.Parse(match.Groups["value"].Value, CultureInfo.InvariantCulture);
+            var isNegative = string.Equals(match.Groups["sign"].Value, "-", StringComparison.Ordinal);
+            var unit = match.Groups["unit"].Value;
+
+            var seconds = string.Equals(unit, "ms", StringComparison.OrdinalIgnoreCase)
+                ? value / 1000d
+                : value;
+            if (isNegative)
+            {
+                seconds = -seconds;
+            }
+
+            return ValidateSubtitleOffsetBounds(seconds);
+        }
+
+        var normalized = rawValue.StartsWith('+') || rawValue.StartsWith('-')
+            ? rawValue
+            : "+" + rawValue;
+
+        var sign = normalized[0] == '-' ? -1d : 1d;
+        var timeText = normalized[1..];
+        var parts = timeText.Split(':');
+        if (parts.Length is < 2 or > 3)
+        {
+            return new SubtitleOffsetParseResult(
+                false,
+                "SubtitleTimingOffset format is invalid. Use values like '+500ms', '-1.2s', '+00:01.250', or '-01:02:03.5'.",
+                0);
+        }
+
+        var hoursText = parts.Length == 3 ? parts[0] : "0";
+        var minutesText = parts[^2];
+        var secondsText = parts[^1];
+        if (!int.TryParse(hoursText, NumberStyles.None, CultureInfo.InvariantCulture, out var hours)
+            || !int.TryParse(minutesText, NumberStyles.None, CultureInfo.InvariantCulture, out var minutes)
+            || !double.TryParse(secondsText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var secondsPart))
+        {
+            return new SubtitleOffsetParseResult(
+                false,
+                "SubtitleTimingOffset contains non-numeric time components.",
+                0);
+        }
+
+        if (minutes >= 60 || secondsPart >= 60)
+        {
+            return new SubtitleOffsetParseResult(
+                false,
+                "SubtitleTimingOffset minutes and seconds must be less than 60 for timecode formats.",
+                0);
+        }
+
+        var totalSeconds = sign * ((hours * 3600d) + (minutes * 60d) + secondsPart);
+        return ValidateSubtitleOffsetBounds(totalSeconds);
+    }
+
+    private static SubtitleOffsetParseResult ValidateSubtitleOffsetBounds(double seconds)
+    {
+        if (Math.Abs(seconds) > MaxSubtitleOffsetSeconds)
+        {
+            return new SubtitleOffsetParseResult(
+                false,
+                $"SubtitleTimingOffset cannot exceed ±{MaxSubtitleOffsetSeconds.ToString("0", CultureInfo.InvariantCulture)} seconds.",
+                0);
+        }
+
+        return new SubtitleOffsetParseResult(true, null, seconds);
+    }
+
+    private sealed record SubtitleOffsetParseResult(
+        bool IsValid,
+        string? ErrorMessage,
+        double Seconds);
 }
