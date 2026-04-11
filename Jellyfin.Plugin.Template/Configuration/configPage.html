@@ -149,20 +149,19 @@
                     throw new Error('Start time must use mm:ss or hh:mm:ss format.');
                 }
 
-                var secondsPart = parseFloat(parts[parts.length - 1]);
-                var minutesPart = parseInt(parts[parts.length - 2], 10);
-                var hoursPart = parts.length === 3 ? parseInt(parts[0], 10) : 0;
+                var secondsText = parts[parts.length - 1];
+                var minutesText = parts[parts.length - 2];
+                var hoursText = parts.length === 3 ? parts[0] : '0';
+                var integerPattern = /^\d+$/;
+                var decimalPattern = /^\d+(?:\.\d+)?$/;
 
-                if (
-                    Number.isNaN(secondsPart) ||
-                    Number.isNaN(minutesPart) ||
-                    Number.isNaN(hoursPart) ||
-                    secondsPart < 0 ||
-                    minutesPart < 0 ||
-                    hoursPart < 0
-                ) {
+                if (!integerPattern.test(minutesText) || !integerPattern.test(hoursText) || !decimalPattern.test(secondsText)) {
                     throw new Error('Start time can only contain non-negative numbers.');
                 }
+
+                var secondsPart = Number(secondsText);
+                var minutesPart = Number(minutesText);
+                var hoursPart = Number(hoursText);
 
                 if (secondsPart >= 60 || minutesPart >= 60) {
                     throw new Error('Start time minutes and seconds must be less than 60.');
