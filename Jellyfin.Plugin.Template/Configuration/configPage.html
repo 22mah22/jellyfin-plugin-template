@@ -202,6 +202,7 @@
                 var isDefault = option.isDefault ?? option.IsDefault;
                 var isForced = option.isForced ?? option.IsForced;
                 var isExternal = option.isExternal ?? option.IsExternal;
+                var isTextBased = option.isTextBased ?? option.IsTextBased;
                 var parts = [];
                 if (language) {
                     parts.push(language);
@@ -223,6 +224,10 @@
                     parts.push('Forced');
                 }
 
+                if (isTextBased === false) {
+                    parts.push('Unsupported (image-based)');
+                }
+
                 return parts.length ? parts.join(' - ') : ('Subtitle stream ' + streamIndex);
             }
 
@@ -236,17 +241,25 @@
             function populateSubtitleOptions(subtitles) {
                 var subtitleSelect = document.querySelector('#SubtitleStreamIndex');
                 subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
+                var supportedCount = 0;
 
                 subtitles.forEach(function(option) {
                     var streamIndex = option.streamIndex ?? option.StreamIndex;
+                    var isTextBased = option.isTextBased ?? option.IsTextBased;
                     var streamOption = document.createElement('option');
                     streamOption.value = streamIndex;
                     streamOption.textContent = subtitleLabel(option);
+                    if (isTextBased === false) {
+                        streamOption.disabled = true;
+                    } else {
+                        supportedCount += 1;
+                    }
+
                     subtitleSelect.appendChild(streamOption);
                 });
 
                 subtitleSelect.disabled = false;
-                document.querySelector('#SubtitleStatus').textContent = 'Loaded ' + subtitles.length + ' subtitle stream(s).';
+                document.querySelector('#SubtitleStatus').textContent = 'Loaded ' + subtitles.length + ' subtitle stream(s), ' + supportedCount + ' compatible with GIF burn-in.';
             }
 
             function loadSubtitleOptions() {

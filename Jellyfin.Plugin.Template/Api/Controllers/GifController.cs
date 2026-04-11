@@ -26,6 +26,40 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 public class GifController : ControllerBase
 {
     private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ass",
+        "cc_dec",
+        "eia_608",
+        "jacosub",
+        "microdvd",
+        "mov_text",
+        "mpl2",
+        "pjs",
+        "realtext",
+        "sami",
+        "ssa",
+        "subrip",
+        "subviewer",
+        "text",
+        "ttml",
+        "vplayer",
+        "webvtt"
+    };
+
+    private static readonly HashSet<string> TextSubtitleFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".ass",
+        ".dfxp",
+        ".sami",
+        ".smi",
+        ".srt",
+        ".ssa",
+        ".stl",
+        ".ttml",
+        ".txt",
+        ".vtt"
+    };
 
     private readonly ILibraryManager _libraryManager;
     private readonly IApplicationPaths _serverApplicationPaths;
@@ -156,7 +190,8 @@ public class GifController : ControllerBase
                 DisplayTitle = GetSubtitleDisplayTitle(stream),
                 IsDefault = stream.IsDefault,
                 IsForced = stream.IsForced,
-                IsExternal = stream.IsExternal
+                IsExternal = stream.IsExternal,
+                IsTextBased = IsTextSubtitleStream(stream)
             })
             .ToList();
 
@@ -347,7 +382,17 @@ public class GifController : ControllerBase
                 return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' is external but does not expose a file path.", null, null);
             }
 
+            if (!IsTextSubtitleStream(selectedSubtitle))
+            {
+                return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' uses a non-text subtitle format that ffmpeg cannot burn into GIFs. Choose a text subtitle stream (SRT/ASS/WebVTT) or generate without subtitles.", null, null);
+            }
+
             return new SubtitleSelection(true, null, null, selectedSubtitle.Path);
+        }
+
+        if (!IsTextSubtitleStream(selectedSubtitle))
+        {
+            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' uses codec '{selectedSubtitle.Codec ?? "unknown"}', which is image-based and not supported by ffmpeg's subtitles filter for GIF generation.", null, null);
         }
 
         var ffmpegSubtitleOrdinal = subtitleStreams
@@ -375,6 +420,21 @@ public class GifController : ControllerBase
             .Replace("]", "\\]", StringComparison.Ordinal)
             .Replace(";", "\\;", StringComparison.Ordinal);
         return escaped;
+    }
+
+    private static bool IsTextSubtitleStream(MediaStream stream)
+    {
+        if (!string.IsNullOrWhiteSpace(stream.Codec))
+        {
+            return TextSubtitleCodecs.Contains(stream.Codec);
+        }
+
+        if (stream.IsExternal && !string.IsNullOrWhiteSpace(stream.Path))
+        {
+            return TextSubtitleFileExtensions.Contains(Path.GetExtension(stream.Path));
+        }
+
+        return false;
     }
 
     private string ResolveFfmpegPath()

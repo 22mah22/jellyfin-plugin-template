@@ -34,4 +34,9 @@ public class SubtitleStreamOption
     /// Gets or sets a value indicating whether this subtitle stream is external.
     /// </summary>
     public bool IsExternal { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this stream is text-based and can be burned in by ffmpeg's subtitles filter.
+    /// </summary>
+    public bool IsTextBased { get; set; }
 }
