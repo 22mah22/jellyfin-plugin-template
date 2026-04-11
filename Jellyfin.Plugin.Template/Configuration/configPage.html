@@ -90,8 +90,9 @@
 
                     <div class="gifGeneratorRow">
                         <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="StartSeconds">Start Seconds</label>
-                            <input id="StartSeconds" name="StartSeconds" type="number" is="emby-input" min="0" step="0.1" value="0" required />
+                            <label class="inputLabel inputLabelUnfocused" for="StartTimecode">Start Time</label>
+                            <input id="StartTimecode" name="StartTimecode" type="text" is="emby-input" value="00:00" placeholder="hh:mm:ss or mm:ss" required />
+                            <div class="fieldDescription">Examples: <code>00:42</code>, <code>01:03:20.5</code>.</div>
                         </div>
                         <div class="inputContainer">
                             <label class="inputLabel inputLabelUnfocused" for="LengthSeconds">Length Seconds</label>
@@ -135,6 +136,39 @@
             function parsePositiveFloat(selector) {
                 var value = parseFloat(document.querySelector(selector).value);
                 return Number.isNaN(value) ? 0 : value;
+            }
+
+            function parseTimecodeToSeconds(selector) {
+                var rawValue = document.querySelector(selector).value.trim();
+                if (!rawValue) {
+                    throw new Error('Start time is required.');
+                }
+
+                var parts = rawValue.split(':');
+                if (parts.length < 2 || parts.length > 3) {
+                    throw new Error('Start time must use mm:ss or hh:mm:ss format.');
+                }
+
+                var secondsPart = parseFloat(parts[parts.length - 1]);
+                var minutesPart = parseInt(parts[parts.length - 2], 10);
+                var hoursPart = parts.length === 3 ? parseInt(parts[0], 10) : 0;
+
+                if (
+                    Number.isNaN(secondsPart) ||
+                    Number.isNaN(minutesPart) ||
+                    Number.isNaN(hoursPart) ||
+                    secondsPart < 0 ||
+                    minutesPart < 0 ||
+                    hoursPart < 0
+                ) {
+                    throw new Error('Start time can only contain non-negative numbers.');
+                }
+
+                if (secondsPart >= 60 || minutesPart >= 60) {
+                    throw new Error('Start time minutes and seconds must be less than 60.');
+                }
+
+                return (hoursPart * 3600) + (minutesPart * 60) + secondsPart;
             }
 
             function setStatus(message, isError) {
@@ -308,9 +342,17 @@
                     setStatus('Generating GIF...', false);
                     document.querySelector('#GifResult').innerHTML = '';
 
+                    var startSeconds;
+                    try {
+                        startSeconds = parseTimecodeToSeconds('#StartTimecode');
+                    } catch (error) {
+                        setStatus('Failed: ' + error.message, true);
+                        return false;
+                    }
+
                     var payload = {
                         itemId: document.querySelector('#ItemId').value.trim(),
-                        startSeconds: parsePositiveFloat('#StartSeconds'),
+                        startSeconds: startSeconds,
                         lengthSeconds: parsePositiveFloat('#LengthSeconds'),
                         width: parsePositiveInt('#TestWidth'),
                         fps: parsePositiveInt('#TestFps')
