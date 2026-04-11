@@ -39,6 +39,7 @@ public class GifController : ControllerBase
         "realtext",
         "sami",
         "ssa",
+        "srt",
         "subrip",
         "subviewer",
         "text",
