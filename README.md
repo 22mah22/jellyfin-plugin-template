@@ -28,7 +28,9 @@ Example request body:
   "lengthSeconds": 4.0,
   "width": 480,
   "fps": 12,
-  "subtitleStreamIndex": 3
+  "subtitleStreamIndex": 3,
+  "subtitleFontSize": 22,
+  "subtitleTimingOffset": "+500ms"
 }
 ```
 
@@ -76,6 +78,14 @@ Example response:
 ```
 
 `subtitleStreamIndex` is optional in create requests. If provided, the selected internal subtitle stream is burned directly into GIF frames. GIF files do not support switchable subtitle tracks after generation.
+
+Additional optional subtitle controls:
+
+- `subtitleFontSize`: numeric font size override for burn-in subtitles.
+- `subtitleTimingOffset`: offset string to shift subtitle timing relative to video.
+  - Examples: `+500ms`, `-1.2s`, `+00:01.250`, `-01:02:03.5`.
+  - Positive values delay subtitles, negative values show subtitles earlier.
+  - Maximum absolute offset is 30 seconds.
 
 ## Configuration UI
 

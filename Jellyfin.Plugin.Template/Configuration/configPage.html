@@ -111,6 +111,19 @@
                         </div>
                     </div>
 
+                    <div class="gifGeneratorRow">
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="SubtitleFontSize">Subtitle Size (optional)</label>
+                            <input id="SubtitleFontSize" name="SubtitleFontSize" type="number" is="emby-input" min="0" max="256" placeholder="0 = default" value="0" />
+                            <div class="fieldDescription">Examples: <code>18</code>, <code>24</code>. Uses ffmpeg subtitle font size.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="SubtitleTimingOffset">Subtitle Timing Offset (optional)</label>
+                            <input id="SubtitleTimingOffset" name="SubtitleTimingOffset" type="text" is="emby-input" placeholder="+500ms, -1.2s, +00:01.250" />
+                            <div class="fieldDescription">Positive = later subtitles, negative = earlier subtitles. Max ±30s.</div>
+                        </div>
+                    </div>
+
                     <div>
                         <button id="GenerateGifBtn" is="emby-button" type="submit" class="raised block emby-button">
                             <span>Generate GIF</span>
@@ -373,6 +386,16 @@
                     var selectedSubtitle = document.querySelector('#SubtitleStreamIndex').value;
                     if (selectedSubtitle !== '') {
                         payload.subtitleStreamIndex = parseInt(selectedSubtitle, 10);
+                    }
+
+                    var subtitleFontSize = parsePositiveInt('#SubtitleFontSize');
+                    if (subtitleFontSize > 0) {
+                        payload.subtitleFontSize = subtitleFontSize;
+                    }
+
+                    var subtitleTimingOffset = document.querySelector('#SubtitleTimingOffset').value.trim();
+                    if (subtitleTimingOffset) {
+                        payload.subtitleTimingOffset = subtitleTimingOffset;
                     }
 
                     fetch(buildApiUrl('/Plugins/GifGenerator/Create'), {
