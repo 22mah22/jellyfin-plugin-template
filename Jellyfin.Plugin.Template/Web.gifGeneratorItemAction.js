@@ -305,7 +305,7 @@
         return null;
     }
 
-    function upsertActionButton(itemId, itemInfo) {
+    function upsertActionButton(itemId) {
         var host = findActionHost();
         if (!host) {
             return;
@@ -322,8 +322,21 @@
         button.type = 'button';
         button.dataset.itemId = itemId;
         button.innerHTML = '<span>Create GIF</span>';
-        button.addEventListener('click', function () {
-            openModalForItem(itemId, itemInfo);
+        button.addEventListener('click', function (event) {
+            var sourceButton = event.currentTarget;
+            var currentItemId = sourceButton && sourceButton.dataset && sourceButton.dataset.itemId
+                ? sourceButton.dataset.itemId
+                : getCurrentItemId();
+
+            if (!currentItemId) {
+                return;
+            }
+
+            fetchItem(currentItemId).then(function (currentItemInfo) {
+                openModalForItem(currentItemId, currentItemInfo);
+            }).catch(function () {
+                openModalForItem(currentItemId, { Name: currentItemId });
+            });
         });
 
         host.appendChild(button);
@@ -346,7 +359,7 @@
                     return;
                 }
 
-                upsertActionButton(itemId, itemInfo);
+                upsertActionButton(itemId);
             }).catch(function () {
                 // Ignore route transitions where item metadata is unavailable.
             });
