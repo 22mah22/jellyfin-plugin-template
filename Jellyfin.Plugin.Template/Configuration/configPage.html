@@ -3,135 +3,31 @@
 <head>
     <meta charset="utf-8">
     <title>Gif Generator</title>
-    <style>
-        .gifGeneratorSection {
-            margin-top: 2em;
-            padding-top: 1.5em;
-            border-top: 1px solid var(--theme-light-color, #666);
-        }
-
-        .gifGeneratorRow {
-            display: flex;
-            gap: 1em;
-            flex-wrap: wrap;
-        }
-
-        .gifGeneratorRow .inputContainer {
-            flex: 1 1 220px;
-            min-width: 220px;
-        }
-
-        .gifResult {
-            margin-top: 1em;
-        }
-
-        .gifResult img {
-            max-width: min(100%, 420px);
-            border-radius: 6px;
-        }
-
-        .monoValue {
-            font-family: ui-monospace, Menlo, Consolas, monospace;
-            word-break: break-all;
-        }
-    </style>
 </head>
 <body>
-    <div id="GifGeneratorConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
+    <div id="GifGeneratorConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
         <div data-role="content">
             <div class="content-primary">
                 <form id="GifGeneratorConfigForm">
                     <h2>Plugin Defaults</h2>
+                    <div class="fieldDescription">This page is for admin defaults only. Daily GIF creation is available from video item detail pages.</div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="MaxGifLengthSeconds">Maximum GIF Length (seconds)</label>
                         <input id="MaxGifLengthSeconds" name="MaxGifLengthSeconds" type="number" is="emby-input" min="1" max="120" required />
                     </div>
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="DefaultFps">Default FPS</label>
-                            <input id="DefaultFps" name="DefaultFps" type="number" is="emby-input" min="1" max="60" required />
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="DefaultWidth">Default Width</label>
-                            <input id="DefaultWidth" name="DefaultWidth" type="number" is="emby-input" min="64" max="4096" required />
-                        </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DefaultFps">Default FPS</label>
+                        <input id="DefaultFps" name="DefaultFps" type="number" is="emby-input" min="1" max="60" required />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DefaultWidth">Default Width</label>
+                        <input id="DefaultWidth" name="DefaultWidth" type="number" is="emby-input" min="64" max="4096" required />
                     </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save Settings</span>
                         </button>
                     </div>
-                </form>
-
-                <form id="GifGeneratorTestForm" class="gifGeneratorSection">
-                    <h2>Test GIF Generation</h2>
-                    <div class="fieldDescription">Use this form to call <code>POST /Plugins/GifGenerator/Create</code> from the dashboard with your current authenticated session.</div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="ItemId">Video Item ID</label>
-                        <input id="ItemId" name="ItemId" type="text" is="emby-input" required />
-                        <div class="fieldDescription">Paste a Jellyfin video Item ID.</div>
-                    </div>
-
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="SubtitleStreamIndex">Subtitle Stream</label>
-                            <select id="SubtitleStreamIndex" name="SubtitleStreamIndex" is="emby-select" disabled>
-                                <option value="">No subtitles</option>
-                            </select>
-                            <div id="SubtitleStatus" class="fieldDescription">Enter an item id to load subtitle streams.</div>
-                        </div>
-                        <div class="inputContainer" style="align-self: flex-end;">
-                            <button id="LoadSubtitlesBtn" is="emby-button" type="button" class="button-link emby-button">
-                                <span>Load subtitles</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="StartTimecode">Start Time</label>
-                            <input id="StartTimecode" name="StartTimecode" type="text" is="emby-input" value="00:00" placeholder="hh:mm:ss or mm:ss" required />
-                            <div class="fieldDescription">Examples: <code>00:42</code>, <code>01:03:20.5</code>.</div>
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="LengthSeconds">Length Seconds</label>
-                            <input id="LengthSeconds" name="LengthSeconds" type="number" is="emby-input" min="0.1" step="0.1" value="3" required />
-                        </div>
-                    </div>
-
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="TestWidth">Width (optional)</label>
-                            <input id="TestWidth" name="TestWidth" type="number" is="emby-input" min="0" max="4096" placeholder="0 = default" value="0" />
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="TestFps">FPS (optional)</label>
-                            <input id="TestFps" name="TestFps" type="number" is="emby-input" min="0" max="60" placeholder="0 = default" value="0" />
-                        </div>
-                    </div>
-
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="SubtitleFontSize">Subtitle Size (optional)</label>
-                            <input id="SubtitleFontSize" name="SubtitleFontSize" type="number" is="emby-input" min="0" max="256" placeholder="0 = default" value="0" />
-                            <div class="fieldDescription">Examples: <code>18</code>, <code>24</code>. Uses ffmpeg subtitle font size.</div>
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="SubtitleTimingOffset">Subtitle Timing Offset (optional)</label>
-                            <input id="SubtitleTimingOffset" name="SubtitleTimingOffset" type="text" is="emby-input" placeholder="+500ms, -1.2s, +00:01.250" />
-                            <div class="fieldDescription">Positive = later subtitles, negative = earlier subtitles. Max ±30s.</div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <button id="GenerateGifBtn" is="emby-button" type="submit" class="raised block emby-button">
-                            <span>Generate GIF</span>
-                        </button>
-                    </div>
-
-                    <div id="GifStatus" class="fieldDescription gifResult"></div>
-                    <div id="GifResult" class="gifResult"></div>
                 </form>
             </div>
         </div>
@@ -146,182 +42,6 @@
                 return Number.isNaN(value) ? 0 : value;
             }
 
-            function parsePositiveFloat(selector) {
-                var value = parseFloat(document.querySelector(selector).value);
-                return Number.isNaN(value) ? 0 : value;
-            }
-
-            function parseTimecodeToSeconds(selector) {
-                var rawValue = document.querySelector(selector).value.trim();
-                if (!rawValue) {
-                    throw new Error('Start time is required.');
-                }
-
-                var parts = rawValue.split(':');
-                if (parts.length < 2 || parts.length > 3) {
-                    throw new Error('Start time must use mm:ss or hh:mm:ss format.');
-                }
-
-                var secondsText = parts[parts.length - 1];
-                var minutesText = parts[parts.length - 2];
-                var hoursText = parts.length === 3 ? parts[0] : '0';
-                var integerPattern = /^\d+$/;
-                var decimalPattern = /^\d+(?:\.\d+)?$/;
-
-                if (!integerPattern.test(minutesText) || !integerPattern.test(hoursText) || !decimalPattern.test(secondsText)) {
-                    throw new Error('Start time can only contain non-negative numbers.');
-                }
-
-                var secondsPart = Number(secondsText);
-                var minutesPart = Number(minutesText);
-                var hoursPart = Number(hoursText);
-
-                if (secondsPart >= 60 || minutesPart >= 60) {
-                    throw new Error('Start time minutes and seconds must be less than 60.');
-                }
-
-                return (hoursPart * 3600) + (minutesPart * 60) + secondsPart;
-            }
-
-            function setStatus(message, isError) {
-                var element = document.querySelector('#GifStatus');
-                element.textContent = message;
-                element.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'var(--theme-primary-color, #52b54b)';
-            }
-
-            function setResult(downloadUrl, fileName) {
-                var result = document.querySelector('#GifResult');
-                result.innerHTML = '';
-
-                var link = document.createElement('a');
-                link.href = downloadUrl;
-                link.textContent = 'Download ' + fileName;
-                link.className = 'monoValue';
-                link.setAttribute('target', '_blank');
-
-                var preview = document.createElement('img');
-                preview.src = downloadUrl + '&_=' + Date.now();
-                preview.alt = 'Generated GIF preview';
-
-                result.appendChild(link);
-                result.appendChild(document.createElement('br'));
-                result.appendChild(preview);
-            }
-
-            function subtitleLabel(option) {
-                var streamIndex = option.streamIndex ?? option.StreamIndex;
-                var language = option.language ?? option.Language;
-                var displayTitle = option.displayTitle ?? option.DisplayTitle;
-                var isDefault = option.isDefault ?? option.IsDefault;
-                var isForced = option.isForced ?? option.IsForced;
-                var isExternal = option.isExternal ?? option.IsExternal;
-                var isTextBased = option.isTextBased ?? option.IsTextBased;
-                var parts = [];
-                if (language) {
-                    parts.push(language);
-                }
-
-                if (displayTitle) {
-                    parts.push(displayTitle);
-                }
-
-                if (isExternal) {
-                    parts.push('External');
-                }
-
-                if (isDefault) {
-                    parts.push('Default');
-                }
-
-                if (isForced) {
-                    parts.push('Forced');
-                }
-
-                if (isTextBased === false) {
-                    parts.push('Unsupported (image-based)');
-                }
-
-                return parts.length ? parts.join(' - ') : ('Subtitle stream ' + streamIndex);
-            }
-
-            function resetSubtitleSelect(message) {
-                var subtitleSelect = document.querySelector('#SubtitleStreamIndex');
-                subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
-                subtitleSelect.disabled = true;
-                document.querySelector('#SubtitleStatus').textContent = message;
-            }
-
-            function populateSubtitleOptions(subtitles) {
-                var subtitleSelect = document.querySelector('#SubtitleStreamIndex');
-                subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
-                var supportedCount = 0;
-
-                subtitles.forEach(function(option) {
-                    var streamIndex = option.streamIndex ?? option.StreamIndex;
-                    var isTextBased = option.isTextBased ?? option.IsTextBased;
-                    var streamOption = document.createElement('option');
-                    streamOption.value = streamIndex;
-                    streamOption.textContent = subtitleLabel(option);
-                    if (isTextBased === false) {
-                        streamOption.disabled = true;
-                    } else {
-                        supportedCount += 1;
-                    }
-
-                    subtitleSelect.appendChild(streamOption);
-                });
-
-                subtitleSelect.disabled = false;
-                document.querySelector('#SubtitleStatus').textContent = 'Loaded ' + subtitles.length + ' subtitle stream(s), ' + supportedCount + ' compatible with GIF burn-in.';
-            }
-
-            function loadSubtitleOptions() {
-                var itemId = document.querySelector('#ItemId').value.trim();
-                if (!itemId) {
-                    resetSubtitleSelect('Enter an item id to load subtitle streams.');
-                    return Promise.resolve();
-                }
-
-                resetSubtitleSelect('Loading subtitle streams...');
-
-                return fetch(buildApiUrl('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId)), {
-                    method: 'GET',
-                    credentials: 'same-origin'
-                }).then(function(response) {
-                    if (!response.ok) {
-                        return response.text().then(function(text) {
-                            throw new Error(text || ('Request failed with status ' + response.status));
-                        });
-                    }
-
-                    return response.json();
-                }).then(function(data) {
-                    var subtitles = data.subtitles || data.Subtitles || [];
-                    if (!subtitles.length) {
-                        resetSubtitleSelect('No subtitle streams found for this item.');
-                        return;
-                    }
-
-                    populateSubtitleOptions(subtitles);
-                }).catch(function(err) {
-                    resetSubtitleSelect('Failed to load subtitles: ' + err.message);
-                });
-            }
-
-            function getAuthToken() {
-                if (!window.ApiClient || !ApiClient.accessToken) {
-                    return '';
-                }
-
-                return ApiClient.accessToken();
-            }
-
-            function buildApiUrl(path) {
-                var token = getAuthToken();
-                var separator = path.indexOf('?') === -1 ? '?' : '&';
-                return path + (token ? (separator + 'api_key=' + encodeURIComponent(token)) : '');
-            }
-
             document.querySelector('#GifGeneratorConfigPage')
                 .addEventListener('pageshow', function() {
                     Dashboard.showLoadingMsg();
@@ -331,16 +51,6 @@
                         document.querySelector('#DefaultWidth').value = config.DefaultWidth;
                         Dashboard.hideLoadingMsg();
                     });
-                });
-
-            document.querySelector('#LoadSubtitlesBtn')
-                .addEventListener('click', function() {
-                    loadSubtitleOptions();
-                });
-
-            document.querySelector('#ItemId')
-                .addEventListener('change', function() {
-                    loadSubtitleOptions();
                 });
 
             document.querySelector('#GifGeneratorConfigForm')
@@ -355,81 +65,6 @@
                         ApiClient.updatePluginConfiguration(GifGeneratorConfig.pluginUniqueId, config).then(function(result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });
-                    });
-
-                    return false;
-                });
-
-            document.querySelector('#GifGeneratorTestForm')
-                .addEventListener('submit', function(e) {
-                    e.preventDefault();
-
-                    setStatus('Generating GIF...', false);
-                    document.querySelector('#GifResult').innerHTML = '';
-
-                    var startSeconds;
-                    try {
-                        startSeconds = parseTimecodeToSeconds('#StartTimecode');
-                    } catch (error) {
-                        setStatus('Failed: ' + error.message, true);
-                        return false;
-                    }
-
-                    var payload = {
-                        itemId: document.querySelector('#ItemId').value.trim(),
-                        startSeconds: startSeconds,
-                        lengthSeconds: parsePositiveFloat('#LengthSeconds'),
-                        width: parsePositiveInt('#TestWidth'),
-                        fps: parsePositiveInt('#TestFps')
-                    };
-
-                    var selectedSubtitle = document.querySelector('#SubtitleStreamIndex').value;
-                    if (selectedSubtitle !== '') {
-                        payload.subtitleStreamIndex = parseInt(selectedSubtitle, 10);
-                    }
-
-                    var subtitleFontSize = parsePositiveInt('#SubtitleFontSize');
-                    if (subtitleFontSize > 0) {
-                        payload.subtitleFontSize = subtitleFontSize;
-                    }
-
-                    var subtitleTimingOffset = document.querySelector('#SubtitleTimingOffset').value.trim();
-                    if (subtitleTimingOffset) {
-                        payload.subtitleTimingOffset = subtitleTimingOffset;
-                    }
-
-                    fetch(buildApiUrl('/Plugins/GifGenerator/Create'), {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload),
-                        credentials: 'same-origin'
-                    }).then(function(response) {
-                        if (!response.ok) {
-                            return response.text().then(function(text) {
-                                throw new Error(text || ('Request failed with status ' + response.status));
-                            });
-                        }
-
-                        return response.json();
-                    }).then(function(data) {
-                        var responseDownloadUrl = data.downloadUrl || data.DownloadUrl;
-                        var responseFileName = data.fileName || data.FileName;
-
-                        if (!responseDownloadUrl || !responseFileName) {
-                            throw new Error('GIF response did not include download metadata.');
-                        }
-
-                        var normalizedDownloadUrl = responseDownloadUrl.charAt(0) === '/'
-                            ? responseDownloadUrl
-                            : '/' + responseDownloadUrl;
-                        var downloadUrl = buildApiUrl(normalizedDownloadUrl);
-
-                        setStatus('Gif generated successfully', false);
-                        setResult(downloadUrl, responseFileName);
-                    }).catch(function(err) {
-                        setStatus('Failed: ' + err.message, true);
                     });
 
                     return false;
