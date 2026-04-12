@@ -5,6 +5,7 @@ This repository now contains a Jellyfin plugin that lets authenticated users gen
 ## Features
 
 - Authenticated API for GIF creation.
+- The dedicated GIF Generator page requires an authenticated Jellyfin session and redirects unauthenticated access to login.
 - Uses Jellyfin's configured encoder path (`EncoderAppPath`) when available and falls back to Jellyfin-aware ffmpeg discovery (`JELLYFIN_FFMPEG`, `FFMPEG_PATH`, then `ffmpeg` on `PATH`).
 - Input parameters: source video item id, clip start time, and clip length.
 - Optional internal subtitle stream selection for burn-in rendering.
@@ -107,6 +108,8 @@ Daily GIF creation is exposed as a dedicated **GIF Generator** user page in the 
 Use Jellyfin's resolved route format:
 
 `#!/configurationpage?name=gifGeneratorPage`
+
+If a user opens this route without a valid Jellyfin session token/current user context, the page immediately redirects to Jellyfin login and returns to the same route after sign-in.
 
 Video detail-page actions can still be used as an enhancement in supported clients/layouts and now route users to the dedicated page with the current item id pre-filled.
 
