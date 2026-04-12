@@ -272,7 +272,9 @@
                     var merged = Object.assign({}, headers || {});
 
                     if (window.ApiClient && typeof window.ApiClient.getAuthorizationHeader === 'function') {
-                        merged.Authorization = window.ApiClient.getAuthorizationHeader();
+                        var authorizationHeader = window.ApiClient.getAuthorizationHeader();
+                        merged.Authorization = authorizationHeader;
+                        merged['X-Emby-Authorization'] = authorizationHeader;
                     } else if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
                         merged['X-Emby-Token'] = window.ApiClient.accessToken() || '';
                     }
