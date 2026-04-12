@@ -95,8 +95,8 @@ Open the plugin settings page in Jellyfin to control:
 - Default FPS
 - Default width
 
-The same page now includes a **Test GIF Generation** form so you can quickly exercise the API from the Jellyfin dashboard (while authenticated).
-It also includes a subtitle picker that loads internal subtitle streams for the selected item id.
+Daily GIF creation is exposed as a **Create GIF** action button on video item detail pages in the Jellyfin web client.
+The button opens a lightweight form that loads subtitle options for the current item and calls the plugin API.
 
 ## Installing via a custom plugin repository
 
