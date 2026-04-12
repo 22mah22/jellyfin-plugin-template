@@ -46,6 +46,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
                 Name = Name,
                 EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
             },
+            // Keep the page user-facing in the authenticated main UI.
+            // The page script also enforces an auth gate and login redirect as defense in depth.
             new PluginPageInfo
             {
                 Name = "gifGeneratorPage",

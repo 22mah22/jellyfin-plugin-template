@@ -8,7 +8,9 @@
     <div id="GifGeneratorPage" data-role="page" class="page type-interior" data-require="emby-input,emby-button,emby-select">
         <div data-role="content">
             <div class="content-primary">
+                <div id="GifAuthMessage" class="fieldDescription" style="display: none; margin-bottom: 1em; color: var(--theme-danger, #ff6666);"></div>
                 <form id="GifGeneratorCreateForm">
+                    <fieldset id="GifFormControls" disabled>
                     <h2>Create GIF</h2>
                     <div class="fieldDescription">Create a GIF from any video item by entering its item id and generation settings.</div>
 
@@ -65,6 +67,7 @@
 
                     <div id="GifStatus" class="fieldDescription" style="margin-top: 1em;"></div>
                     <div id="GifResult" style="margin-top: 1em;"></div>
+                    </fieldset>
                 </form>
             </div>
         </div>
@@ -73,8 +76,98 @@
             (function () {
                 'use strict';
 
+                var gifPageRoute = '#!/configurationpage?name=gifGeneratorPage';
+                var isAuthorized = false;
+
                 function normalizeApiPath(path) {
                     return path.charAt(0) === '/' ? path.slice(1) : path;
+                }
+
+                function getAccessToken() {
+                    if (!window.ApiClient) {
+                        return '';
+                    }
+
+                    if (typeof window.ApiClient.accessToken === 'function') {
+                        return window.ApiClient.accessToken() || '';
+                    }
+
+                    if (window.ApiClient._serverInfo && window.ApiClient._serverInfo.AccessToken) {
+                        return window.ApiClient._serverInfo.AccessToken;
+                    }
+
+                    if (window.ApiClient.serverInfo && window.ApiClient.serverInfo.AccessToken) {
+                        return window.ApiClient.serverInfo.AccessToken;
+                    }
+
+                    return '';
+                }
+
+                function getCurrentUserId() {
+                    if (!window.ApiClient) {
+                        return '';
+                    }
+
+                    if (typeof window.ApiClient.getCurrentUserId === 'function') {
+                        return window.ApiClient.getCurrentUserId() || '';
+                    }
+
+                    if (typeof window.ApiClient.getCurrentUser === 'function') {
+                        var currentUser = window.ApiClient.getCurrentUser();
+                        if (currentUser && currentUser.Id) {
+                            return currentUser.Id;
+                        }
+                    }
+
+                    if (window.ApiClient._serverInfo && window.ApiClient._serverInfo.UserId) {
+                        return window.ApiClient._serverInfo.UserId;
+                    }
+
+                    if (window.ApiClient.serverInfo && window.ApiClient.serverInfo.UserId) {
+                        return window.ApiClient.serverInfo.UserId;
+                    }
+
+                    return '';
+                }
+
+                function isAuthenticated() {
+                    return Boolean(getAccessToken() && getCurrentUserId());
+                }
+
+                function getLoginRoute() {
+                    return '#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
+                }
+
+                function setFormEnabled(isEnabled) {
+                    var fieldset = document.querySelector('#GifFormControls');
+                    fieldset.disabled = !isEnabled;
+                    fieldset.setAttribute('aria-disabled', String(!isEnabled));
+                }
+
+                function setUnauthorizedState(message) {
+                    var authMessage = document.querySelector('#GifAuthMessage');
+
+                    isAuthorized = false;
+                    setFormEnabled(false);
+                    document.querySelector('#GifResult').innerHTML = '';
+                    authMessage.style.display = 'block';
+                    authMessage.textContent = message || 'You must be signed in to use the GIF Generator page.';
+                    setStatus('Unauthorized.', true);
+                }
+
+                function ensureAuthenticatedOrRedirect() {
+                    if (isAuthenticated()) {
+                        var authMessage = document.querySelector('#GifAuthMessage');
+                        isAuthorized = true;
+                        setFormEnabled(true);
+                        authMessage.style.display = 'none';
+                        authMessage.textContent = '';
+                        return true;
+                    }
+
+                    setUnauthorizedState('You are not signed in. Redirecting to the Jellyfin login page...');
+                    window.location.replace(getLoginRoute());
+                    return false;
                 }
 
                 function getApiUrl(path) {
@@ -252,6 +345,11 @@
                 }
 
                 function loadSubtitles() {
+                    if (!isAuthorized) {
+                        setUnauthorizedState('You must be signed in to load subtitles.');
+                        return;
+                    }
+
                     var itemId = document.querySelector('#GifItemId').value.trim();
 
                     if (!itemId) {
@@ -271,6 +369,12 @@
                 }
 
                 function submitCreate(event) {
+                    if (!isAuthorized) {
+                        event.preventDefault();
+                        setUnauthorizedState('You must be signed in to generate GIFs.');
+                        return false;
+                    }
+
                     var itemId;
                     var startSeconds;
                     var payload;
@@ -351,8 +455,15 @@
                 }
 
                 document.querySelector('#GifGeneratorPage').addEventListener('pageshow', function () {
-                    var params = getPageQueryParams();
-                    var itemId = (params.get('itemId') || params.get('id') || '').trim();
+                    var params;
+                    var itemId;
+
+                    if (!ensureAuthenticatedOrRedirect()) {
+                        return;
+                    }
+
+                    params = getPageQueryParams();
+                    itemId = (params.get('itemId') || params.get('id') || '').trim();
 
                     setStatus('Ready.', false);
                     document.querySelector('#GifResult').innerHTML = '';
@@ -362,6 +473,9 @@
                         document.querySelector('#GifItemId').value = itemId;
                     }
                 });
+
+                setFormEnabled(false);
+                setStatus('Checking session...', false);
 
                 document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);
                 document.querySelector('#GifGeneratorCreateForm').addEventListener('submit', submitCreate);
