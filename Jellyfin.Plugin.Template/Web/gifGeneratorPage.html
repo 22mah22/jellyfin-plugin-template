@@ -81,6 +81,7 @@
                 var isAuthorized = false;
                 var hasInitialized = false;
                 var initPromise = null;
+                var currentGifObjectUrl = null;
 
                 function normalizeApiPath(path) {
                     return path.charAt(0) === '/' ? path.slice(1) : path;
@@ -185,7 +186,7 @@
 
                     isAuthorized = false;
                     setFormEnabled(false);
-                    document.querySelector('#GifResult').innerHTML = '';
+                    clearResult();
                     authMessage.style.display = 'block';
                     authMessage.textContent = message || 'You must be signed in to use the GIF Generator page.';
                     setStatus('Unauthorized.', true);
@@ -314,23 +315,6 @@
                     return path;
                 }
 
-                function appendCacheBuster(url) {
-                    var separator = url.indexOf('?') === -1 ? '?' : '&';
-                    return url + separator + '_=' + Date.now();
-                }
-
-                function appendAccessToken(url) {
-                    var accessToken = getAccessToken();
-                    var separator;
-
-                    if (!accessToken) {
-                        return url;
-                    }
-
-                    separator = url.indexOf('?') === -1 ? '?' : '&';
-                    return url + separator + 'api_key=' + encodeURIComponent(accessToken);
-                }
-
                 function getAuthHeaders(headers) {
                     var merged = Object.assign({}, headers || {});
 
@@ -439,28 +423,54 @@
                     node.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'var(--theme-primary-color, #52b54b)';
                 }
 
-                function setResult(fileName) {
+                function revokeCurrentGifObjectUrl() {
+                    if (!currentGifObjectUrl) {
+                        return;
+                    }
+
+                    URL.revokeObjectURL(currentGifObjectUrl);
+                    currentGifObjectUrl = null;
+                }
+
+                function clearResult() {
                     var result = document.querySelector('#GifResult');
-                    var downloadPath = '/Plugins/GifGenerator/Download/' + encodeURIComponent(fileName);
-                    var downloadUrl = appendAccessToken(getApiUrl(downloadPath));
+
+                    revokeCurrentGifObjectUrl();
+                    result.innerHTML = '';
+                }
+
+                function fetchGifBlob(fileName) {
+                    return apiRequest('/Plugins/GifGenerator/Download/' + encodeURIComponent(fileName), {
+                        method: 'GET'
+                    }).then(function (response) {
+                        return response.blob();
+                    });
+                }
+
+                function setResult(fileName) {
                     var anchor = document.createElement('a');
                     var image = document.createElement('img');
+                    var result = document.querySelector('#GifResult');
 
-                    result.innerHTML = '';
+                    return fetchGifBlob(fileName).then(function (blob) {
+                        var objectUrl = URL.createObjectURL(blob);
 
-                    anchor.href = downloadUrl;
-                    anchor.target = '_blank';
-                    anchor.rel = 'noopener';
-                    anchor.textContent = 'Download ' + fileName;
+                        clearResult();
+                        currentGifObjectUrl = objectUrl;
 
-                    image.alt = 'Generated GIF preview';
-                    image.src = appendCacheBuster(downloadUrl);
-                    image.style.display = 'block';
-                    image.style.marginTop = '.5em';
-                    image.style.maxWidth = '100%';
+                        anchor.href = objectUrl;
+                        anchor.download = fileName;
+                        anchor.textContent = 'Download ' + fileName;
 
-                    result.appendChild(anchor);
-                    result.appendChild(image);
+                        image.alt = 'Generated GIF preview';
+                        image.src = objectUrl;
+                        image.style.display = 'block';
+                        image.style.marginTop = '.5em';
+                        image.style.maxWidth = '100%';
+
+                        result.appendChild(anchor);
+                        result.appendChild(image);
+                    });
                 }
 
                 function populateSubtitleSelect(subtitles) {
@@ -577,7 +587,7 @@
                         payload.subtitleTimingOffset = subtitleTimingOffset;
                     }
 
-                    document.querySelector('#GifResult').innerHTML = '';
+                    clearResult();
                     setStatus('Generating GIF...', false);
 
                     apiRequest('/Plugins/GifGenerator/Create', {
@@ -595,7 +605,8 @@
                             throw new Error('Create endpoint did not return a file name.');
                         }
 
-                        setResult(fileName);
+                        return setResult(fileName);
+                    }).then(function () {
                         setStatus('GIF generated.', false);
                     }).catch(function (error) {
                         setStatus('Failed: ' + error.message, true);
