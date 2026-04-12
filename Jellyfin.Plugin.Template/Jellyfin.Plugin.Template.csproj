@@ -28,9 +28,9 @@
 
   <ItemGroup>
     <None Remove="Configuration\configPage.html" />
-    <None Remove="Web.gifGeneratorItemAction.js" />
+    <None Remove="Web\gifGeneratorPage.html" />
     <EmbeddedResource Include="Configuration\configPage.html" />
-    <EmbeddedResource Include="Web.gifGeneratorItemAction.js" />
+    <EmbeddedResource Include="Web\gifGeneratorPage.html" />
   </ItemGroup>
 
 </Project>
