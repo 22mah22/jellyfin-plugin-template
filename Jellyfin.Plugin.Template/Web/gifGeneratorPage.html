@@ -78,6 +78,7 @@
 
                 var gifPageRoute = '#!/configurationpage?name=gifGeneratorPage';
                 var isAuthorized = false;
+                var hasInitialized = false;
 
                 function normalizeApiPath(path) {
                     return path.charAt(0) === '/' ? path.slice(1) : path;
@@ -227,11 +228,11 @@
                 function getPageQueryParams() {
                     var hash = window.location.hash || '';
                     var qIndex = hash.indexOf('?');
-                    if (qIndex === -1) {
-                        return new URLSearchParams();
+                    if (qIndex !== -1) {
+                        return new URLSearchParams(hash.slice(qIndex + 1));
                     }
 
-                    return new URLSearchParams(hash.slice(qIndex + 1));
+                    return new URLSearchParams(window.location.search || '');
                 }
 
                 function parseTimecode(rawValue) {
@@ -458,6 +459,12 @@
                     var params;
                     var itemId;
 
+                    if (hasInitialized) {
+                        return;
+                    }
+
+                    hasInitialized = true;
+
                     if (!ensureAuthenticatedOrRedirect()) {
                         return;
                     }
@@ -483,6 +490,7 @@
 
                 document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);
                 document.querySelector('#GifGeneratorCreateForm').addEventListener('submit', submitCreate);
+                onPageShow();
             })();
         </script>
     </div>
