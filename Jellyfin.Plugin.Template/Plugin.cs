@@ -50,6 +50,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             {
                 Name = "gifGeneratorPage",
                 DisplayName = "GIF Generator",
+                MenuSection = "main",
+                MenuIcon = "movie",
                 EnableInMainMenu = true,
                 EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.gifGeneratorPage.html", GetType().Namespace)
             },
