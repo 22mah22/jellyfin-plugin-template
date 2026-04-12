@@ -28,7 +28,7 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Publish plugin
-        run: dotnet publish Jellyfin.Plugin.Template/Jellyfin.Plugin.Template.csproj -c Release -o artifacts/publish
+        run: dotnet publish Jellyfin.Plugin.Template/Jellyfin.Plugin.Template.csproj -c Release -o artifacts/publish /p:Version=${{ github.event.inputs.version }}
 
       - name: Create plugin archive
         run: |
