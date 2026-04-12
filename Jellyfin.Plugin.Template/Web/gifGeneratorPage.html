@@ -73,18 +73,62 @@
             (function () {
                 'use strict';
 
-                function getApiToken() {
-                    if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
-                        return window.ApiClient.accessToken() || '';
-                    }
-
-                    return '';
+                function normalizeApiPath(path) {
+                    return path.charAt(0) === '/' ? path.slice(1) : path;
                 }
 
-                function buildApiUrl(path) {
-                    var token = getApiToken();
-                    var separator = path.indexOf('?') === -1 ? '?' : '&';
-                    return token ? path + separator + 'api_key=' + encodeURIComponent(token) : path;
+                function getApiUrl(path) {
+                    if (window.ApiClient && typeof window.ApiClient.getUrl === 'function') {
+                        return window.ApiClient.getUrl(normalizeApiPath(path));
+                    }
+
+                    return path;
+                }
+
+                function appendCacheBuster(url) {
+                    var separator = url.indexOf('?') === -1 ? '?' : '&';
+                    return url + separator + '_=' + Date.now();
+                }
+
+                function getAuthHeaders(headers) {
+                    var merged = Object.assign({}, headers || {});
+
+                    if (window.ApiClient && typeof window.ApiClient.getAuthorizationHeader === 'function') {
+                        merged.Authorization = window.ApiClient.getAuthorizationHeader();
+                    } else if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
+                        merged['X-Emby-Token'] = window.ApiClient.accessToken() || '';
+                    }
+
+                    return merged;
+                }
+
+                function parseErrorMessage(response) {
+                    if (response.status === 401 || response.status === 403) {
+                        return Promise.resolve('Session expired or unauthorized — please sign in again.');
+                    }
+
+                    return response.text().then(function (text) {
+                        return text || ('Request failed (' + response.status + ')');
+                    });
+                }
+
+                function apiRequest(path, options) {
+                    var requestOptions = options || {};
+
+                    return fetch(getApiUrl(path), {
+                        method: requestOptions.method || 'GET',
+                        headers: getAuthHeaders(requestOptions.headers),
+                        body: requestOptions.body,
+                        credentials: requestOptions.credentials
+                    }).then(function (response) {
+                        if (!response.ok) {
+                            return parseErrorMessage(response).then(function (message) {
+                                throw new Error(message);
+                            });
+                        }
+
+                        return response;
+                    });
                 }
 
                 function getPageQueryParams() {
@@ -155,7 +199,7 @@
                 function setResult(fileName) {
                     var result = document.querySelector('#GifResult');
                     var downloadPath = '/Plugins/GifGenerator/Download/' + encodeURIComponent(fileName);
-                    var downloadUrl = buildApiUrl(downloadPath);
+                    var downloadUrl = getApiUrl(downloadPath);
                     var anchor = document.createElement('a');
                     var image = document.createElement('img');
 
@@ -167,7 +211,7 @@
                     anchor.textContent = 'Download ' + fileName;
 
                     image.alt = 'Generated GIF preview';
-                    image.src = downloadUrl + '&_=' + Date.now();
+                    image.src = appendCacheBuster(downloadUrl);
                     image.style.display = 'block';
                     image.style.marginTop = '.5em';
                     image.style.maxWidth = '100%';
@@ -198,16 +242,9 @@
                 }
 
                 function fetchSubtitles(itemId) {
-                    return fetch(buildApiUrl('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId)), {
-                        method: 'GET',
-                        credentials: 'same-origin'
+                    return apiRequest('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId), {
+                        method: 'GET'
                     }).then(function (response) {
-                        if (!response.ok) {
-                            return response.text().then(function (text) {
-                                throw new Error(text || ('Failed to load subtitles (' + response.status + ')'));
-                            });
-                        }
-
                         return response.json();
                     }).then(function (payload) {
                         return payload.subtitles || payload.Subtitles || [];
@@ -289,20 +326,13 @@
                     document.querySelector('#GifResult').innerHTML = '';
                     setStatus('Generating GIF...', false);
 
-                    fetch(buildApiUrl('/Plugins/GifGenerator/Create'), {
+                    apiRequest('/Plugins/GifGenerator/Create', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        credentials: 'same-origin',
                         body: JSON.stringify(payload)
                     }).then(function (response) {
-                        if (!response.ok) {
-                            return response.text().then(function (text) {
-                                throw new Error(text || ('Create failed (' + response.status + ')'));
-                            });
-                        }
-
                         return response.json();
                     }).then(function (data) {
                         var fileName = data.fileName || data.FileName;
