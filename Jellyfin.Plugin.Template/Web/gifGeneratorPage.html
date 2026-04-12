@@ -12,11 +12,19 @@
                 <form id="GifGeneratorCreateForm">
                     <fieldset id="GifFormControls" disabled>
                     <h2>Create GIF</h2>
-                    <div class="fieldDescription">Create a GIF from any video item by entering its item id and generation settings.</div>
+                    <div class="fieldDescription">Create a GIF from any video item by searching for its title and generation settings.</div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="GifItemId">Item ID</label>
-                        <input id="GifItemId" name="GifItemId" type="text" is="emby-input" required />
+                        <label class="inputLabel inputLabelUnfocused" for="GifItemSearch">Item Search</label>
+                        <input id="GifItemSearch" name="GifItemSearch" type="text" is="emby-input" placeholder="Search movies, episodes, videos..." autocomplete="off" />
+                        <div id="GifItemSearchResults" class="fieldDescription" role="listbox" aria-label="Item search results" tabindex="0" style="margin-top: .5em; max-height: 16em; overflow-y: auto; border: 1px solid rgba(255,255,255,.2); border-radius: .2em; padding: .4em;"></div>
+                        <div id="GifItemSelectedLabel" class="fieldDescription" style="margin-top: .5em;">Selected: none</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifItemId">Item ID (internal)</label>
+                        <input id="GifItemId" name="GifItemId" type="text" is="emby-input" required readonly aria-readonly="true" />
+                        <div class="fieldDescription">This value is filled automatically when you choose a result above.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -82,6 +90,11 @@
                 var hasInitialized = false;
                 var initPromise = null;
                 var currentGifObjectUrl = null;
+                var searchDebounceTimer = null;
+                var activeSearchRequestId = 0;
+                var latestSearchRequestId = 0;
+                var currentSearchResults = [];
+                var activeResultIndex = -1;
 
                 function normalizeApiPath(path) {
                     return path.charAt(0) === '/' ? path.slice(1) : path;
@@ -423,6 +436,239 @@
                     node.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'var(--theme-primary-color, #52b54b)';
                 }
 
+                function getItemDisplayContext(item) {
+                    var parts = [];
+                    var parentNumber = item.ParentIndexNumber ?? item.parentIndexNumber;
+                    var childNumber = item.IndexNumber ?? item.indexNumber;
+                    var seasonLabel;
+                    var episodeLabel;
+
+                    if (item.SeriesName || item.seriesName) {
+                        parts.push(item.SeriesName || item.seriesName);
+                    }
+
+                    if (parentNumber !== undefined && parentNumber !== null) {
+                        seasonLabel = 'S' + String(parentNumber).padStart(2, '0');
+                    }
+
+                    if (childNumber !== undefined && childNumber !== null) {
+                        episodeLabel = 'E' + String(childNumber).padStart(2, '0');
+                    }
+
+                    if (seasonLabel || episodeLabel) {
+                        parts.push((seasonLabel || 'S??') + (episodeLabel || ''));
+                    }
+
+                    return parts.join(' • ');
+                }
+
+                function getItemDisplayLabel(item) {
+                    var title = item.Name || item.name || 'Untitled';
+                    var year = item.ProductionYear || item.productionYear;
+                    var context = getItemDisplayContext(item);
+                    var parts = [title];
+
+                    if (year) {
+                        parts.push('(' + year + ')');
+                    }
+
+                    if (context) {
+                        parts.push('— ' + context);
+                    }
+
+                    return parts.join(' ');
+                }
+
+                function setSelectedItem(item) {
+                    var itemIdInput = document.querySelector('#GifItemId');
+                    var selectedLabel = document.querySelector('#GifItemSelectedLabel');
+
+                    itemIdInput.value = item && (item.Id || item.id) ? (item.Id || item.id) : '';
+                    if (!item) {
+                        selectedLabel.textContent = 'Selected: none';
+                        return;
+                    }
+
+                    selectedLabel.textContent = 'Selected: ' + getItemDisplayLabel(item);
+                }
+
+                function setSearchResultsMessage(message, isError) {
+                    var resultsNode = document.querySelector('#GifItemSearchResults');
+                    resultsNode.innerHTML = '';
+                    resultsNode.textContent = message;
+                    resultsNode.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'inherit';
+                    resultsNode.setAttribute('aria-activedescendant', '');
+                    currentSearchResults = [];
+                    activeResultIndex = -1;
+                }
+
+                function applyActiveResult() {
+                    var resultsNode = document.querySelector('#GifItemSearchResults');
+                    var nodes = resultsNode.querySelectorAll('[data-result-index]');
+
+                    nodes.forEach(function (node) {
+                        var index = Number(node.getAttribute('data-result-index'));
+                        var isActive = index === activeResultIndex;
+                        node.style.background = isActive ? 'rgba(255,255,255,.14)' : 'transparent';
+                        node.setAttribute('aria-selected', String(isActive));
+                        if (isActive) {
+                            resultsNode.setAttribute('aria-activedescendant', node.id);
+                        }
+                    });
+
+                    if (activeResultIndex < 0) {
+                        resultsNode.setAttribute('aria-activedescendant', '');
+                    }
+                }
+
+                function chooseSearchResult(index) {
+                    var searchInput = document.querySelector('#GifItemSearch');
+                    if (index < 0 || index >= currentSearchResults.length) {
+                        return;
+                    }
+
+                    setSelectedItem(currentSearchResults[index]);
+                    searchInput.value = getItemDisplayLabel(currentSearchResults[index]);
+                    setSearchResultsMessage('Item selected. Search again to choose a different one.', false);
+                }
+
+                function renderSearchResults(items) {
+                    var resultsNode = document.querySelector('#GifItemSearchResults');
+
+                    if (!items.length) {
+                        setSearchResultsMessage('No matching video items found.', false);
+                        return;
+                    }
+
+                    resultsNode.innerHTML = '';
+                    resultsNode.style.color = 'inherit';
+                    currentSearchResults = items;
+                    activeResultIndex = 0;
+
+                    items.forEach(function (item, index) {
+                        var row = document.createElement('button');
+
+                        row.type = 'button';
+                        row.id = 'GifItemSearchResult_' + index;
+                        row.setAttribute('data-result-index', String(index));
+                        row.setAttribute('role', 'option');
+                        row.setAttribute('aria-selected', 'false');
+                        row.style.display = 'block';
+                        row.style.width = '100%';
+                        row.style.textAlign = 'left';
+                        row.style.background = 'transparent';
+                        row.style.border = 'none';
+                        row.style.color = 'inherit';
+                        row.style.padding = '.35em .2em';
+                        row.style.cursor = 'pointer';
+                        row.textContent = getItemDisplayLabel(item);
+
+                        row.addEventListener('click', function () {
+                            chooseSearchResult(index);
+                        });
+
+                        resultsNode.appendChild(row);
+                    });
+
+                    applyActiveResult();
+                }
+
+                function fetchItemById(itemId) {
+                    var userId = getCurrentUserId();
+                    if (!userId || !itemId) {
+                        return Promise.resolve(null);
+                    }
+
+                    return apiRequest('/Users/' + encodeURIComponent(userId) + '/Items/' + encodeURIComponent(itemId), {
+                        method: 'GET'
+                    }).then(function (response) {
+                        return response.json();
+                    }).catch(function () {
+                        return null;
+                    });
+                }
+
+                function searchGifItems(query) {
+                    var userId = getCurrentUserId();
+                    var requestId;
+
+                    if (!userId) {
+                        setSearchResultsMessage('Could not determine the current Jellyfin user for search.', true);
+                        return Promise.resolve();
+                    }
+
+                    if (!query) {
+                        setSearchResultsMessage('Type at least 2 characters to search video items.', false);
+                        return Promise.resolve();
+                    }
+
+                    requestId = ++activeSearchRequestId;
+                    latestSearchRequestId = requestId;
+                    setSearchResultsMessage('Loading search results…', false);
+
+                    return apiRequest('/Users/' + encodeURIComponent(userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=ProductionYear,SeriesName,ParentIndexNumber,IndexNumber,MediaType&Limit=20&SortBy=SortName', {
+                        method: 'GET'
+                    }).then(function (response) {
+                        return response.json();
+                    }).then(function (payload) {
+                        var items = payload.Items || payload.items || [];
+                        var videoItems;
+
+                        if (requestId !== latestSearchRequestId) {
+                            return;
+                        }
+
+                        videoItems = items.filter(function (item) {
+                            var mediaType = (item.MediaType || item.mediaType || '').toLowerCase();
+                            var type = (item.Type || item.type || '').toLowerCase();
+                            return mediaType === 'video'
+                                || type === 'movie'
+                                || type === 'episode'
+                                || type === 'video'
+                                || type === 'musicvideo'
+                                || type === 'trailer';
+                        });
+
+                        renderSearchResults(videoItems);
+                    }).catch(function (error) {
+                        if (requestId !== latestSearchRequestId) {
+                            return;
+                        }
+
+                        setSearchResultsMessage('Search failed: ' + error.message, true);
+                    });
+                }
+
+                function onGifItemSearchInput(event) {
+                    var query = event.target.value.trim();
+
+                    clearTimeout(searchDebounceTimer);
+                    searchDebounceTimer = setTimeout(function () {
+                        searchGifItems(query.length >= 2 ? query : '');
+                    }, 300);
+                }
+
+                function onGifItemSearchKeydown(event) {
+                    if (!currentSearchResults.length) {
+                        return;
+                    }
+
+                    if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        activeResultIndex = Math.min(activeResultIndex + 1, currentSearchResults.length - 1);
+                        applyActiveResult();
+                    } else if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        activeResultIndex = Math.max(activeResultIndex - 1, 0);
+                        applyActiveResult();
+                    } else if (event.key === 'Enter') {
+                        event.preventDefault();
+                        if (activeResultIndex >= 0) {
+                            chooseSearchResult(activeResultIndex);
+                        }
+                    }
+                }
+
                 function revokeCurrentGifObjectUrl() {
                     if (!currentGifObjectUrl) {
                         return;
@@ -679,8 +925,17 @@
                         populateSubtitleSelect([]);
 
                         if (itemId) {
-                            document.querySelector('#GifItemId').value = itemId;
+                            setSelectedItem({ Id: itemId, Name: itemId });
+                            fetchItemById(itemId).then(function (item) {
+                                if (item && (item.Id || item.id) === itemId) {
+                                    setSelectedItem(item);
+                                }
+                            });
+                        } else {
+                            setSelectedItem(null);
                         }
+
+                        setSearchResultsMessage('Type at least 2 characters to search video items.', false);
                     })();
 
                     try {
@@ -701,6 +956,9 @@
 
                 document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);
                 document.querySelector('#GifGeneratorCreateForm').addEventListener('submit', submitCreate);
+                document.querySelector('#GifItemSearch').addEventListener('input', onGifItemSearchInput);
+                document.querySelector('#GifItemSearch').addEventListener('keydown', onGifItemSearchKeydown);
+                document.querySelector('#GifItemSearchResults').addEventListener('keydown', onGifItemSearchKeydown);
                 onPageShow();
             })();
         </script>
