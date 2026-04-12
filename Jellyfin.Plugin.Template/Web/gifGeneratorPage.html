@@ -76,6 +76,7 @@
             (function () {
                 'use strict';
 
+                // Canonical authenticated user route for generation UX.
                 var gifPageRoute = '#!/gif-generator';
                 var isAuthorized = false;
                 var hasInitialized = false;
@@ -133,6 +134,7 @@
                 }
 
                 function isAuthenticated() {
+                    // Authentication source contract: Jellyfin ApiClient token + current user context.
                     return Boolean(getAccessToken() && getCurrentUserId());
                 }
 

@@ -20,6 +20,7 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 
 /// <summary>
 /// API endpoints for authenticated gif generation.
+/// Contract: all routes in this controller remain authorized-only; do not introduce anonymous endpoints.
 /// </summary>
 [ApiController]
 [Authorize]

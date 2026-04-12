@@ -113,6 +113,20 @@ If a user opens this route without a valid Jellyfin session token/current user c
 
 If item-level actions are needed in the future, they can be reintroduced in a separate, explicitly versioned enhancement pass.
 
+## User Access Contract
+
+- **Canonical UI path:** the authenticated user generation experience is `#!/gif-generator`.
+- **Authentication source:** UI access and API calls use Jellyfin session context from `ApiClient` (session token + current user).
+- **API contract:** plugin API endpoints remain protected with `[Authorize]`; no anonymous plugin endpoints are exposed.
+- **Separation of concerns:** `Configuration/configPage.html` is for admin-managed defaults only, while GIF generation is user-facing via the canonical route.
+- **Optional enhancements:** item-detail actions or similar entry points are optional helpers, must be non-blocking, and must never replace `#!/gif-generator` as canonical.
+
+### Future UI Addition Checklist
+
+- Must tolerate missing/renamed DOM hooks without breaking core generation flow.
+- Must not rely on aggressive mutation polling loops to function.
+- Must degrade gracefully (feature absent is acceptable; user route and API remain functional).
+
 ## Installing via a custom plugin repository
 
 Jellyfin expects a **JSON manifest URL**, not the GitHub repository home page.
