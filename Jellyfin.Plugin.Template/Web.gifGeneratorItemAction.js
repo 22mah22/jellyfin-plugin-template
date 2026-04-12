@@ -4,7 +4,17 @@
     var MODAL_ID = 'gifGeneratorItemActionModal';
     var BUTTON_CLASS = 'gifGeneratorItemActionButton';
     var MENU_ACTION_CLASS = 'gifGeneratorItemActionMenuItem';
+    var FALLBACK_BUTTON_ID = 'gifGeneratorFallbackActionButton';
+    var FALLBACK_NOTICE_ID = 'gifGeneratorFallbackNotice';
     var DEBUG_LOGGING = false;
+    // Admin debug toggle:
+    // 1) Open browser devtools on Jellyfin web.
+    // 2) Run: localStorage.setItem('gifGeneratorDebug', '1')
+    // 3) Refresh page to enable verbose [GifGeneratorItemAction] console logs.
+    // Disable with: localStorage.removeItem('gifGeneratorDebug')
+    if (window.localStorage && window.localStorage.getItem('gifGeneratorDebug') === '1') {
+        DEBUG_LOGGING = true;
+    }
     var STATE = {
         itemId: null,
         itemInfo: null,
@@ -105,7 +115,7 @@
 
         var styles = document.createElement('style');
         styles.id = 'gifGeneratorItemActionStyles';
-        styles.textContent = '\n            .' + BUTTON_CLASS + ' { margin-inline-start: .75em; }\n            #' + MODAL_ID + ' { border: 0; border-radius: 8px; max-width: 560px; width: calc(100vw - 2rem); background: var(--theme-body-background, #111); color: var(--theme-body-text-color, #fff); }\n            #' + MODAL_ID + '::backdrop { background: rgba(0, 0, 0, 0.55); }\n            #' + MODAL_ID + ' .gifGeneratorFormRow { display: flex; gap: .75em; flex-wrap: wrap; }\n            #' + MODAL_ID + ' .gifGeneratorFormRow .inputContainer { flex: 1 1 200px; min-width: 180px; }\n            #' + MODAL_ID + ' .gifGeneratorActions { display: flex; justify-content: flex-end; gap: .75em; margin-top: 1rem; }\n            #' + MODAL_ID + ' .gifGeneratorResult { margin-top: 1rem; word-break: break-word; }\n            #' + MODAL_ID + ' .gifGeneratorResult img { margin-top: .5rem; max-width: 100%; border-radius: 6px; }\n        ';
+        styles.textContent = '\n            .' + BUTTON_CLASS + ' { margin-inline-start: .75em; }\n            #' + MODAL_ID + ' { border: 0; border-radius: 8px; max-width: 560px; width: calc(100vw - 2rem); background: var(--theme-body-background, #111); color: var(--theme-body-text-color, #fff); }\n            #' + MODAL_ID + '::backdrop { background: rgba(0, 0, 0, 0.55); }\n            #' + MODAL_ID + ' .gifGeneratorFormRow { display: flex; gap: .75em; flex-wrap: wrap; }\n            #' + MODAL_ID + ' .gifGeneratorFormRow .inputContainer { flex: 1 1 200px; min-width: 180px; }\n            #' + MODAL_ID + ' .gifGeneratorActions { display: flex; justify-content: flex-end; gap: .75em; margin-top: 1rem; }\n            #' + MODAL_ID + ' .gifGeneratorResult { margin-top: 1rem; word-break: break-word; }\n            #' + MODAL_ID + ' .gifGeneratorResult img { margin-top: .5rem; max-width: 100%; border-radius: 6px; }\n            #' + FALLBACK_BUTTON_ID + ' { position: fixed; right: 1rem; bottom: 1rem; z-index: 2147483640; border-radius: 999px; padding: .5rem .9rem; box-shadow: 0 4px 16px rgba(0,0,0,.35); font-size: .92rem; }\n            #' + FALLBACK_BUTTON_ID + '[hidden] { display: none !important; }\n            #' + FALLBACK_NOTICE_ID + ' { position: fixed; right: 1rem; bottom: 3.75rem; z-index: 2147483640; background: rgba(17, 17, 17, 0.92); color: var(--theme-body-text-color, #fff); border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: .4rem .6rem; max-width: 320px; font-size: .82rem; }\n            #' + FALLBACK_NOTICE_ID + '[hidden] { display: none !important; }\n        ';
 
         document.head.appendChild(styles);
     }
@@ -313,12 +323,19 @@
         var selectors = [
             '.detailPagePrimaryContainer .mainDetailButtons',
             '.itemDetailPage .mainDetailButtons',
+            '.itemDetailsPage .mainDetailButtons',
+            '.detailPageContent .mainDetailButtons',
             '.detailPagePrimaryContainer .detailPagePrimaryActions',
             '.itemDetailPage .detailPagePrimaryActions',
+            '.itemDetailsPage .detailPagePrimaryActions',
             '.itemDetailPage .detailPageButtons',
             '.detailPagePrimaryContainer .detailPageButtons',
+            '.itemDetailsPage .detailPageButtons',
+            '.detailPageContent .detailPageButtons',
             '.itemDetailPage .detailActions',
-            '.detailPagePrimaryContainer .detailActions'
+            '.detailPagePrimaryContainer .detailActions',
+            '.itemDetailsPage .detailActions',
+            '.itemDetailsPage .detailPagePrimaryContainer .buttonContainer'
         ];
 
         for (var i = 0; i < selectors.length; i += 1) {
@@ -326,23 +343,6 @@
             if (found) {
                 debugLog('Found primary host with selector:', selectors[i]);
                 return found;
-            }
-        }
-
-        var detailPage = document.querySelector('.itemDetailPage, .detailPagePrimaryContainer');
-        if (detailPage) {
-            var buttonRows = detailPage.querySelectorAll('div');
-            for (var j = 0; j < buttonRows.length; j += 1) {
-                var row = buttonRows[j];
-                var className = row.className || '';
-                if (typeof className !== 'string') {
-                    continue;
-                }
-
-                if (/(button|actions)/i.test(className) && row.querySelector('.detailButton, button[is="emby-button"], button.emby-button')) {
-                    debugLog('Found primary host with heuristic class match:', className);
-                    return row;
-                }
             }
         }
 
@@ -388,6 +388,59 @@
         primaryButtons.forEach(function (button) {
             button.remove();
         });
+    }
+
+    function getOrCreateFallbackButton() {
+        var existing = document.getElementById(FALLBACK_BUTTON_ID);
+        if (existing) {
+            return existing;
+        }
+
+        var button = createActionButton('emby-button button-submit');
+        button.id = FALLBACK_BUTTON_ID;
+        button.hidden = true;
+        button.setAttribute('aria-label', 'Create GIF');
+        document.body.appendChild(button);
+        return button;
+    }
+
+    function getOrCreateFallbackNotice() {
+        var existing = document.getElementById(FALLBACK_NOTICE_ID);
+        if (existing) {
+            return existing;
+        }
+
+        var notice = document.createElement('div');
+        notice.id = FALLBACK_NOTICE_ID;
+        notice.hidden = true;
+        document.body.appendChild(notice);
+        return notice;
+    }
+
+    function hideFallbackAction() {
+        var fallback = document.getElementById(FALLBACK_BUTTON_ID);
+        if (fallback) {
+            fallback.hidden = true;
+        }
+
+        var notice = document.getElementById(FALLBACK_NOTICE_ID);
+        if (notice) {
+            notice.hidden = true;
+        }
+    }
+
+    function showFallbackAction(itemId, message) {
+        var fallback = getOrCreateFallbackButton();
+        fallback.dataset.itemId = itemId;
+        fallback.hidden = false;
+
+        var notice = getOrCreateFallbackNotice();
+        if (message) {
+            notice.textContent = message;
+            notice.hidden = false;
+        } else {
+            notice.hidden = true;
+        }
     }
 
     function upsertActionButton(itemId) {
@@ -522,13 +575,26 @@
                 if (!isVideoItem(itemInfo)) {
                     removePrimaryButtons();
                     removeMenuAction();
+                    hideFallbackAction();
                     return;
                 }
 
                 var hasPrimaryAction = upsertActionButton(itemId);
                 if (!hasPrimaryAction) {
+                    var fallbackMessage = 'Create GIF button could not be attached to this page layout. Using floating fallback action.';
+                    debugLog(fallbackMessage, 'Item:', itemId);
                     bindMoreButtons(itemId);
+                    showFallbackAction(itemId, fallbackMessage);
+                    if (window.console && typeof window.console.warn === 'function') {
+                        window.console.warn('[GifGeneratorItemAction] ' + fallbackMessage);
+                    }
+                    if (window.Dashboard && typeof window.Dashboard.alert === 'function') {
+                        window.Dashboard.alert(fallbackMessage);
+                    }
+                    return;
                 }
+
+                hideFallbackAction();
             }).catch(function () {
                 // Ignore route transitions where item metadata is unavailable.
             });
