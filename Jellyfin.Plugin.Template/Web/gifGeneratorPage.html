@@ -205,20 +205,37 @@
                     var retryDelaysMs = [0, 200, 350, 500, 800];
                     var attempt = 0;
 
+                    function hasTokenOrUserCapability() {
+                        if (!window.ApiClient) {
+                            return false;
+                        }
+
+                        return Boolean(
+                            typeof window.ApiClient.accessToken === 'function'
+                            || typeof window.ApiClient.getCurrentUserId === 'function'
+                            || typeof window.ApiClient.getCurrentUser === 'function'
+                            || (window.ApiClient._serverInfo && (window.ApiClient._serverInfo.AccessToken || window.ApiClient._serverInfo.UserId))
+                            || (window.ApiClient.serverInfo && (window.ApiClient.serverInfo.AccessToken || window.ApiClient.serverInfo.UserId)));
+                    }
+
                     function hasUsableClient() {
                         return Boolean(
                             window.ApiClient
                             && typeof window.ApiClient.getUrl === 'function'
-                            && typeof window.ApiClient.getAuthorizationHeader === 'function');
+                            && (
+                                typeof window.ApiClient.getAuthorizationHeader === 'function'
+                                || hasTokenOrUserCapability()
+                            ));
                     }
 
                     function probe() {
-                        if (hasUsableClient() && isAuthenticated()) {
-                            return Promise.resolve({ ready: true, authenticated: true });
+                        if (hasUsableClient()) {
+                            return Promise.resolve({ ready: true, authenticated: isAuthenticated() });
                         }
 
-                        if (hasUsableClient()) {
-                            return Promise.resolve({ ready: true, authenticated: false });
+                        if (!window.ApiClient && attempt < retryDelaysMs.length - 1) {
+                            attempt += 1;
+                            return sleep(retryDelaysMs[attempt]).then(probe);
                         }
 
                         if (attempt < retryDelaysMs.length - 1) {
@@ -226,7 +243,7 @@
                             return sleep(retryDelaysMs[attempt]).then(probe);
                         }
 
-                        return Promise.resolve({ ready: false, authenticated: false });
+                        return Promise.resolve({ ready: Boolean(window.ApiClient), authenticated: isAuthenticated() });
                     }
 
                     return probe();
