@@ -79,6 +79,7 @@
                 var gifPageRoute = '#!/configurationpage?name=gifGeneratorPage';
                 var isAuthorized = false;
                 var hasInitialized = false;
+                var initPromise = null;
 
                 function normalizeApiPath(path) {
                     return path.charAt(0) === '/' ? path.slice(1) : path;
@@ -139,6 +140,38 @@
                     return '#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
                 }
 
+                function trimTrailingSlashes(value) {
+                    return (value || '').replace(/\/+$/, '');
+                }
+
+                function getBaseUrlPrefix() {
+                    var serverAddress = '';
+                    var webPathIndex;
+
+                    if (window.ApiClient) {
+                        serverAddress = window.ApiClient._serverAddress
+                            || window.ApiClient.serverAddress
+                            || (window.ApiClient._serverInfo && window.ApiClient._serverInfo.Address)
+                            || (window.ApiClient.serverInfo && window.ApiClient.serverInfo.Address)
+                            || '';
+                    }
+
+                    if (serverAddress) {
+                        return trimTrailingSlashes(serverAddress);
+                    }
+
+                    webPathIndex = window.location.pathname.indexOf('/web/');
+                    if (webPathIndex !== -1) {
+                        return trimTrailingSlashes(window.location.origin + window.location.pathname.slice(0, webPathIndex));
+                    }
+
+                    return trimTrailingSlashes(window.location.origin);
+                }
+
+                function getFullyQualifiedLoginRoute() {
+                    return getBaseUrlPrefix() + '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
+                }
+
                 function setFormEnabled(isEnabled) {
                     var fieldset = document.querySelector('#GifFormControls');
                     fieldset.disabled = !isEnabled;
@@ -156,19 +189,70 @@
                     setStatus('Unauthorized.', true);
                 }
 
-                function ensureAuthenticatedOrRedirect() {
-                    if (isAuthenticated()) {
-                        var authMessage = document.querySelector('#GifAuthMessage');
-                        isAuthorized = true;
-                        setFormEnabled(true);
-                        authMessage.style.display = 'none';
-                        authMessage.textContent = '';
-                        return true;
+                function clearAuthWarning() {
+                    var authMessage = document.querySelector('#GifAuthMessage');
+                    authMessage.style.display = 'none';
+                    authMessage.textContent = '';
+                }
+
+                function sleep(ms) {
+                    return new Promise(function (resolve) {
+                        setTimeout(resolve, ms);
+                    });
+                }
+
+                function redirectToLoginWithFallback() {
+                    var currentHref = window.location.href;
+
+                    window.location.replace(getLoginRoute());
+
+                    setTimeout(function () {
+                        if (window.location.href === currentHref || window.location.pathname.indexOf('/web/configurationpage') !== -1) {
+                            window.location.replace(getFullyQualifiedLoginRoute());
+                        }
+                    }, 250);
+                }
+
+                function checkSessionAsync() {
+                    var retryDelaysMs = [0, 350, 700];
+                    var attempt = 0;
+
+                    function probe() {
+                        return fetch(getApiUrl('/Users/Me'), {
+                            method: 'GET',
+                            headers: getAuthHeaders(),
+                            credentials: 'same-origin'
+                        }).then(function (response) {
+                            if (response.ok) {
+                                return { authorized: true };
+                            }
+
+                            if (response.status === 401 || response.status === 403) {
+                                if (attempt < retryDelaysMs.length - 1) {
+                                    attempt += 1;
+                                    return sleep(retryDelaysMs[attempt]).then(probe);
+                                }
+
+                                return { authorized: false, unauthorized: true };
+                            }
+
+                            if (attempt < retryDelaysMs.length - 1) {
+                                attempt += 1;
+                                return sleep(retryDelaysMs[attempt]).then(probe);
+                            }
+
+                            return { authorized: false, unauthorized: false, status: response.status };
+                        }).catch(function () {
+                            if (attempt < retryDelaysMs.length - 1) {
+                                attempt += 1;
+                                return sleep(retryDelaysMs[attempt]).then(probe);
+                            }
+
+                            return { authorized: false, unauthorized: false, status: 0 };
+                        });
                     }
 
-                    setUnauthorizedState('You are not signed in. Redirecting to the Jellyfin login page...');
-                    window.location.replace(getLoginRoute());
-                    return false;
+                    return probe();
                 }
 
                 function getApiUrl(path) {
@@ -455,29 +539,61 @@
                     return false;
                 }
 
-                function onPageShow() {
+                async function onPageShow() {
                     var params;
                     var itemId;
+                    var sessionState;
 
                     if (hasInitialized) {
                         return;
                     }
 
-                    if (!ensureAuthenticatedOrRedirect()) {
-                        return;
+                    if (initPromise) {
+                        return initPromise;
                     }
 
-                    hasInitialized = true;
+                    initPromise = (async function () {
+                        setStatus('Checking session...', false);
+                        setFormEnabled(false);
+                        clearAuthWarning();
 
-                    params = getPageQueryParams();
-                    itemId = (params.get('itemId') || params.get('id') || '').trim();
+                        sessionState = await checkSessionAsync();
 
-                    setStatus('Ready.', false);
-                    document.querySelector('#GifResult').innerHTML = '';
-                    populateSubtitleSelect([]);
+                        if (!sessionState.authorized) {
+                            if (sessionState.unauthorized) {
+                                setUnauthorizedState('You are not signed in. Redirecting to the Jellyfin login page...');
+                                redirectToLoginWithFallback();
+                                return;
+                            }
 
-                    if (itemId) {
-                        document.querySelector('#GifItemId').value = itemId;
+                            setFormEnabled(false);
+                            setStatus('Could not verify session. Please try again.', true);
+                            return;
+                        }
+
+                        isAuthorized = true;
+                        hasInitialized = true;
+                        setFormEnabled(true);
+                        clearAuthWarning();
+
+                        params = getPageQueryParams();
+                        itemId = (params.get('itemId') || params.get('id') || '').trim();
+
+                        setStatus('Ready.', false);
+                        document.querySelector('#GifResult').innerHTML = '';
+                        populateSubtitleSelect([]);
+
+                        if (itemId) {
+                            document.querySelector('#GifItemId').value = itemId;
+                        }
+                    })();
+
+                    try {
+                        await initPromise;
+                    } finally {
+                        if (!hasInitialized) {
+                            initPromise = null;
+                        }
                     }
                 }
 
