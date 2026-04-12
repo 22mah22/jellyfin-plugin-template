@@ -8,12 +8,12 @@
     "category": "General",
     "versions": [
       {
-        "version": "0.1.2.4",
-        "changelog": "Release 0.1.2.4.",
+        "version": "0.1.2.5",
+        "changelog": "Release 0.1.2.5.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/22mah22/jellyfin-plugin-template/releases/download/v0.1.2.4/jellyfin-plugin-gif-generator.zip",
-        "checksum": "ebb5d386de036b86b669d4725480ead7",
-        "timestamp": "2026-04-12 17:34:30"
+        "sourceUrl": "https://github.com/22mah22/jellyfin-plugin-template/releases/download/v0.1.2.5/jellyfin-plugin-gif-generator.zip",
+        "checksum": "c5263ef6a2c4b53640c4209b8f848f8c",
+        "timestamp": "2026-04-12 18:27:09"
       }
     ]
   }
