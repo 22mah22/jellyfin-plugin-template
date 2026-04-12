@@ -105,9 +105,9 @@ Generated GIF files are cleaned up automatically when plugin endpoints are used:
 - If storage keeps growing, cleanup also prunes oldest files beyond the built-in max file count guardrail.
 
 Daily GIF creation is exposed as a dedicated **GIF Generator** user page in the main menu.
-Use Jellyfin's resolved route format:
+Use the dedicated in-app route:
 
-`#!/configurationpage?name=gifGeneratorPage`
+`#!/gif-generator`
 
 If a user opens this route without a valid Jellyfin session token/current user context, the page immediately redirects to Jellyfin login and returns to the same route after sign-in.
 
