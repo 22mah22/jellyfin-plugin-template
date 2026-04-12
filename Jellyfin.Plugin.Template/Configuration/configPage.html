@@ -23,6 +23,11 @@
                         <label class="inputLabel inputLabelUnfocused" for="DefaultWidth">Default Width</label>
                         <input id="DefaultWidth" name="DefaultWidth" type="number" is="emby-input" min="64" max="4096" required />
                     </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifRetentionHours">GIF Retention (hours)</label>
+                        <input id="GifRetentionHours" name="GifRetentionHours" type="number" is="emby-input" min="1" max="8760" required />
+                        <div class="fieldDescription">Generated GIF files older than this retention window are deleted during normal API usage.</div>
+                    </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save Settings</span>
@@ -42,6 +47,10 @@
                 return Number.isNaN(value) ? 0 : value;
             }
 
+            function clamp(value, min, max) {
+                return Math.min(max, Math.max(min, value));
+            }
+
             document.querySelector('#GifGeneratorConfigPage')
                 .addEventListener('pageshow', function() {
                     Dashboard.showLoadingMsg();
@@ -49,6 +58,7 @@
                         document.querySelector('#MaxGifLengthSeconds').value = config.MaxGifLengthSeconds;
                         document.querySelector('#DefaultFps').value = config.DefaultFps;
                         document.querySelector('#DefaultWidth').value = config.DefaultWidth;
+                        document.querySelector('#GifRetentionHours').value = config.GifRetentionHours || 168;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -62,6 +72,7 @@
                         config.MaxGifLengthSeconds = parsePositiveInt('#MaxGifLengthSeconds');
                         config.DefaultFps = parsePositiveInt('#DefaultFps');
                         config.DefaultWidth = parsePositiveInt('#DefaultWidth');
+                        config.GifRetentionHours = clamp(parsePositiveInt('#GifRetentionHours'), 1, 8760);
                         ApiClient.updatePluginConfiguration(GifGeneratorConfig.pluginUniqueId, config).then(function(result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });

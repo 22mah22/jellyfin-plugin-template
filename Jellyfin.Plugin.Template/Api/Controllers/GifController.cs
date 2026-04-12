@@ -14,6 +14,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Template.Api.Controllers;
 
@@ -26,6 +27,9 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 public class GifController : ControllerBase
 {
     private const double MaxSubtitleOffsetSeconds = 30;
+    private const int MinimumGifRetentionHours = 1;
+    private const int MaximumGifRetentionHours = 8760;
+    private const int MaxGeneratedGifCount = 500;
 
     private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
@@ -71,6 +75,7 @@ public class GifController : ControllerBase
     };
 
     private readonly ILibraryManager _libraryManager;
+    private readonly ILogger<GifController> _logger;
     private readonly IApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
 
@@ -78,14 +83,17 @@ public class GifController : ControllerBase
     /// Initializes a new instance of the <see cref="GifController"/> class.
     /// </summary>
     /// <param name="libraryManager">The library manager.</param>
+    /// <param name="logger">The logger.</param>
     /// <param name="serverApplicationPaths">The server application paths.</param>
     /// <param name="serverConfigurationManager">The server configuration manager.</param>
     public GifController(
         ILibraryManager libraryManager,
+        ILogger<GifController> logger,
         IApplicationPaths serverApplicationPaths,
         IServerConfigurationManager serverConfigurationManager)
     {
         _libraryManager = libraryManager;
+        _logger = logger;
         _serverApplicationPaths = serverApplicationPaths;
         _serverConfigurationManager = serverConfigurationManager;
     }
@@ -124,6 +132,8 @@ public class GifController : ControllerBase
         {
             return BadRequest("SubtitleTimingOffset requires SubtitleStreamIndex to be set.");
         }
+
+        CleanupGeneratedGifs();
 
         var item = _libraryManager.GetItemById(request.ItemId);
         if (item is null || item.MediaType != MediaType.Video || string.IsNullOrWhiteSpace(item.Path))
@@ -250,6 +260,7 @@ public class GifController : ControllerBase
         }
 
         var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
+        CleanupGeneratedGifs();
         if (!Directory.Exists(outputDirectory))
         {
             return NotFound();
@@ -723,4 +734,65 @@ public class GifController : ControllerBase
         string? ErrorMessage,
         int? FfmpegSubtitleOrdinal,
         string? ExternalSubtitlePath);
+
+    private void CleanupGeneratedGifs()
+    {
+        var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
+        if (!Directory.Exists(outputDirectory))
+        {
+            return;
+        }
+
+        var plugin = Plugin.Instance;
+        var configuredRetentionHours = plugin?.Configuration.GifRetentionHours ?? 168;
+        var retentionHours = Math.Clamp(configuredRetentionHours, MinimumGifRetentionHours, MaximumGifRetentionHours);
+        var expirationThresholdUtc = DateTimeOffset.UtcNow.AddHours(-retentionHours);
+
+        var gifFiles = Directory
+            .EnumerateFiles(outputDirectory, "*.gif", SearchOption.TopDirectoryOnly)
+            .Select(path => new FileInfo(path))
+            .OrderBy(file => file.LastWriteTimeUtc)
+            .ToList();
+
+        foreach (var gifFile in gifFiles)
+        {
+            if (gifFile.LastWriteTimeUtc >= expirationThresholdUtc)
+            {
+                continue;
+            }
+
+            TryDeleteFile(gifFile, $"retention window ({retentionHours}h)");
+        }
+
+        if (gifFiles.Count <= MaxGeneratedGifCount)
+        {
+            return;
+        }
+
+        var filesToPrune = gifFiles
+            .Where(file => file.Exists)
+            .OrderBy(file => file.LastWriteTimeUtc)
+            .Take(gifFiles.Count - MaxGeneratedGifCount);
+
+        foreach (var gifFile in filesToPrune)
+        {
+            TryDeleteFile(gifFile, $"max generated gif count ({MaxGeneratedGifCount})");
+        }
+    }
+
+    private void TryDeleteFile(FileInfo gifFile, string reason)
+    {
+        try
+        {
+            gifFile.Delete();
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete generated gif file '{Path}' during cleanup for {Reason}.", gifFile.FullName, reason);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete generated gif file '{Path}' during cleanup for {Reason}.", gifFile.FullName, reason);
+        }
+    }
 }
