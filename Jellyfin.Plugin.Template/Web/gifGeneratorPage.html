@@ -5,7 +5,7 @@
     <title>GIF Generator</title>
 </head>
 <body>
-    <div id="GifGeneratorPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
+    <div id="GifGeneratorPage" data-role="page" class="page type-interior" data-require="emby-input,emby-button,emby-select">
         <div data-role="content">
             <div class="content-primary">
                 <div id="GifAuthMessage" class="fieldDescription" style="display: none; margin-bottom: 1em; color: var(--theme-danger, #ff6666);"></div>
@@ -76,7 +76,8 @@
             (function () {
                 'use strict';
 
-                var gifPageRoute = '#!/configurationpage?name=gifGeneratorPage';
+                var gifPageRoute = '#!/gif-generator';
+                var legacyGifPageRoute = '#!/configurationpage?name=gifGeneratorPage';
                 var isAuthorized = false;
                 var hasInitialized = false;
                 var initPromise = null;
@@ -137,7 +138,7 @@
                 }
 
                 function getLoginRoute() {
-                    return '#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
+                    return '#!/login.html?returnurl=' + encodeURIComponent(legacyGifPageRoute);
                 }
 
                 function trimTrailingSlashes(value) {
@@ -169,7 +170,36 @@
                 }
 
                 function getFullyQualifiedLoginRoute() {
-                    return getBaseUrlPrefix() + '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
+                    return getBaseUrlPrefix() + '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(legacyGifPageRoute);
+                }
+
+                function tryPromoteDedicatedRoute() {
+                    var hash = window.location.hash || '';
+                    var search = window.location.search || '';
+                    var currentParams = new URLSearchParams(search);
+                    var legacyHashPrefix = '#!/configurationpage?name=gifGeneratorPage';
+                    var isLegacyHashRoute = hash.indexOf(legacyHashPrefix) === 0;
+                    var isDirectConfigPath = window.location.pathname.indexOf('/web/configurationpage') !== -1
+                        && (currentParams.get('name') || '').toLowerCase() === 'gifgeneratorpage';
+                    var itemId = '';
+                    var dedicatedRoute;
+
+                    if (!isLegacyHashRoute && !isDirectConfigPath) {
+                        return;
+                    }
+
+                    if (isLegacyHashRoute) {
+                        itemId = (new URLSearchParams(hash.slice(legacyHashPrefix.length).replace(/^[?&]/, ''))).get('itemId') || '';
+                    } else {
+                        itemId = currentParams.get('itemId') || currentParams.get('id') || '';
+                    }
+
+                    dedicatedRoute = gifPageRoute;
+                    if (itemId) {
+                        dedicatedRoute += '?itemId=' + encodeURIComponent(itemId);
+                    }
+
+                    window.history.replaceState({}, document.title, '/web/index.html' + dedicatedRoute);
                 }
 
                 function setFormEnabled(isEnabled) {
@@ -603,6 +633,7 @@
                 pageElement.addEventListener('pageshow', onPageShow);
                 pageElement.addEventListener('viewshow', onPageShow);
 
+                tryPromoteDedicatedRoute();
                 setFormEnabled(false);
                 setStatus('Checking session...', false);
 

@@ -124,9 +124,9 @@
     }
 
     function navigateToGeneratorPage(itemId) {
-        var route = '#!/configurationpage?name=gifGeneratorPage';
+        var route = '#!/gif-generator';
         if (itemId) {
-            route += '&itemId=' + encodeURIComponent(itemId);
+            route += '?itemId=' + encodeURIComponent(itemId);
         }
 
         window.location.hash = route;
