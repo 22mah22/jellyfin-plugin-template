@@ -332,24 +332,18 @@ public class GifController : ControllerBase
         double subtitleOffsetSeconds)
     {
         var builder = new StringBuilder();
-        if (Math.Abs(subtitleOffsetSeconds) > 0)
+        var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
+        var hasSubtitleOffset = Math.Abs(subtitleOffsetSeconds) > 0;
+        if (hasSubtitleOffset && hasSubtitleBurnIn)
         {
-            // Positive subtitle offset means subtitles appear later, so shift video timestamps earlier for subtitle evaluation.
-            builder.Append("setpts=PTS");
-            if (subtitleOffsetSeconds > 0)
-            {
-                builder.Append('-');
-            }
-            else
-            {
-                builder.Append('+');
-            }
-
-            builder.Append(Math.Abs(subtitleOffsetSeconds).ToString("0.###", CultureInfo.InvariantCulture));
-            builder.Append("/TB,");
+            // Shift only subtitle evaluation timing, then restore original timestamps so GIF frame selection remains anchored to StartSeconds.
+            // Positive subtitle offset means subtitles appear later, so subtitle evaluation should see earlier timestamps.
+            builder.Append("setpts=");
+            builder.Append(BuildPtsOffsetExpression(subtitleOffsetSeconds, reverse: false));
+            builder.Append(',');
         }
 
-        if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath))
+        if (hasSubtitleBurnIn)
         {
             builder.Append("subtitles='");
             var subtitleInputPath = subtitleSelection.ExternalSubtitlePath ?? inputPath;
@@ -374,12 +368,33 @@ public class GifController : ControllerBase
             builder.Append(',');
         }
 
+        if (hasSubtitleOffset && hasSubtitleBurnIn)
+        {
+            // Restore timestamps after subtitle burn-in so the GIF visual clip start remains unchanged.
+            builder.Append("setpts=");
+            builder.Append(BuildPtsOffsetExpression(subtitleOffsetSeconds, reverse: true));
+            builder.Append(',');
+        }
+
         builder.Append("fps=");
         builder.Append(fps.ToString(CultureInfo.InvariantCulture));
         builder.Append(",scale=");
         builder.Append(width.ToString(CultureInfo.InvariantCulture));
         builder.Append(":-1:flags=lanczos");
         return builder.ToString();
+    }
+
+    private static string BuildPtsOffsetExpression(double subtitleOffsetSeconds, bool reverse)
+    {
+        var applyNegativeOffset = subtitleOffsetSeconds > 0;
+        if (reverse)
+        {
+            applyNegativeOffset = !applyNegativeOffset;
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"PTS{(applyNegativeOffset ? "-" : "+")}{Math.Abs(subtitleOffsetSeconds).ToString("0.###", CultureInfo.InvariantCulture)}/TB");
     }
 
     private static string? GetSubtitleDisplayTitle(MediaStream stream)
