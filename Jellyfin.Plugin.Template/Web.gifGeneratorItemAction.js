@@ -3,11 +3,23 @@
 
     var MODAL_ID = 'gifGeneratorItemActionModal';
     var BUTTON_CLASS = 'gifGeneratorItemActionButton';
+    var MENU_ACTION_CLASS = 'gifGeneratorItemActionMenuItem';
+    var DEBUG_LOGGING = false;
     var STATE = {
         itemId: null,
         itemInfo: null,
         subtitles: []
     };
+
+    function debugLog() {
+        if (!DEBUG_LOGGING || !window.console || typeof window.console.debug !== 'function') {
+            return;
+        }
+
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('[GifGeneratorItemAction]');
+        window.console.debug.apply(window.console, args);
+    }
 
     function getApiToken() {
         if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
@@ -292,35 +304,47 @@
             '.detailPagePrimaryContainer .mainDetailButtons',
             '.itemDetailPage .mainDetailButtons',
             '.detailPagePrimaryContainer .detailPagePrimaryActions',
-            '.itemDetailPage .detailPagePrimaryActions'
+            '.itemDetailPage .detailPagePrimaryActions',
+            '.itemDetailPage .detailPageButtons',
+            '.detailPagePrimaryContainer .detailPageButtons',
+            '.itemDetailPage .detailActions',
+            '.detailPagePrimaryContainer .detailActions'
         ];
 
         for (var i = 0; i < selectors.length; i += 1) {
             var found = document.querySelector(selectors[i]);
             if (found) {
+                debugLog('Found primary host with selector:', selectors[i]);
                 return found;
             }
         }
 
+        var detailPage = document.querySelector('.itemDetailPage, .detailPagePrimaryContainer');
+        if (detailPage) {
+            var buttonRows = detailPage.querySelectorAll('div');
+            for (var j = 0; j < buttonRows.length; j += 1) {
+                var row = buttonRows[j];
+                var className = row.className || '';
+                if (typeof className !== 'string') {
+                    continue;
+                }
+
+                if (/(button|actions)/i.test(className) && row.querySelector('.detailButton, button[is="emby-button"], button.emby-button')) {
+                    debugLog('Found primary host with heuristic class match:', className);
+                    return row;
+                }
+            }
+        }
+
+        debugLog('No primary action host found.');
         return null;
     }
 
-    function upsertActionButton(itemId) {
-        var host = findActionHost();
-        if (!host) {
-            return;
-        }
-
-        var existing = host.querySelector('.' + BUTTON_CLASS);
-        if (existing) {
-            existing.dataset.itemId = itemId;
-            return;
-        }
-
+    function createActionButton(className) {
         var button = document.createElement('button');
-        button.className = 'detailButton emby-button ' + BUTTON_CLASS;
+        button.className = className;
         button.type = 'button';
-        button.dataset.itemId = itemId;
+        button.dataset.itemId = '';
         button.innerHTML = '<span>Create GIF</span>';
         button.addEventListener('click', function (event) {
             var sourceButton = event.currentTarget;
@@ -339,7 +363,137 @@
             });
         });
 
+        return button;
+    }
+
+    function removeMenuAction() {
+        var menuActions = document.querySelectorAll('.' + MENU_ACTION_CLASS);
+        menuActions.forEach(function (action) {
+            action.remove();
+        });
+    }
+
+    function removePrimaryButtons() {
+        var primaryButtons = document.querySelectorAll('.' + BUTTON_CLASS);
+        primaryButtons.forEach(function (button) {
+            button.remove();
+        });
+    }
+
+    function upsertActionButton(itemId) {
+        var host = findActionHost();
+        if (!host) {
+            return false;
+        }
+
+        var allButtons = document.querySelectorAll('.' + BUTTON_CLASS);
+        allButtons.forEach(function (button) {
+            if (!host.contains(button)) {
+                button.remove();
+            }
+        });
+
+        var existing = host.querySelector('.' + BUTTON_CLASS);
+        if (existing) {
+            existing.dataset.itemId = itemId;
+            removeMenuAction();
+            return true;
+        }
+
+        var button = createActionButton('detailButton emby-button ' + BUTTON_CLASS);
+        button.dataset.itemId = itemId;
         host.appendChild(button);
+        removeMenuAction();
+        return true;
+    }
+
+    function getVisibleMenuHosts() {
+        var selectors = [
+            '.actionSheet.open .items',
+            '.actionSheet.open',
+            '.actionSheetMenu .items',
+            '.paperMenu .items',
+            '.mainDrawer .items',
+            '.mainDrawer .actions',
+            '.dashboardDocument .popupVisible [role="menu"]',
+            '.dashboardDocument .popupVisible .items',
+            '.dashboardDocument .dialog-opened [role="menu"]',
+            '[role="menu"].visible',
+            '[role="menu"]'
+        ];
+
+        for (var i = 0; i < selectors.length; i += 1) {
+            var nodes = document.querySelectorAll(selectors[i]);
+            for (var j = nodes.length - 1; j >= 0; j -= 1) {
+                var node = nodes[j];
+                if (!node || node.closest('#' + MODAL_ID)) {
+                    continue;
+                }
+
+                var hasActionChildren = node.querySelector('button, a, .listItem, .actionSheetMenuItem');
+                if (hasActionChildren) {
+                    return node;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function upsertOverflowMenuAction(itemId) {
+        var menuHost = getVisibleMenuHosts();
+        if (!menuHost) {
+            debugLog('No overflow menu host found for item', itemId);
+            return false;
+        }
+
+        var existing = menuHost.querySelector('.' + MENU_ACTION_CLASS);
+        if (existing) {
+            existing.dataset.itemId = itemId;
+            return true;
+        }
+
+        var action = createActionButton('listItem-button emby-button ' + MENU_ACTION_CLASS);
+        action.dataset.itemId = itemId;
+        action.style.width = '100%';
+        action.style.textAlign = 'start';
+        menuHost.appendChild(action);
+        debugLog('Injected Create GIF into overflow menu.');
+        return true;
+    }
+
+    function bindMoreButtons(itemId) {
+        var moreSelectors = [
+            '.itemDetailPage .btnMoreCommands',
+            '.detailPagePrimaryContainer .btnMoreCommands',
+            '.itemDetailPage button[title="More"]',
+            '.itemDetailPage [aria-label="More"]',
+            '.detailPagePrimaryContainer button[title="More"]',
+            '.detailPagePrimaryContainer [aria-label="More"]'
+        ];
+        var selectors = moreSelectors.join(', ');
+        var moreButtons = document.querySelectorAll(selectors);
+
+        moreButtons.forEach(function (button) {
+            button.dataset.gifGeneratorItemId = itemId;
+            if (button.dataset.gifGeneratorBound === '1') {
+                return;
+            }
+
+            button.dataset.gifGeneratorBound = '1';
+            button.addEventListener('click', function () {
+                var currentItemId = button.dataset.gifGeneratorItemId || getCurrentItemId();
+                [10, 60, 180].forEach(function (delay) {
+                    window.setTimeout(function () {
+                        upsertOverflowMenuAction(currentItemId);
+                    }, delay);
+                });
+            });
+        });
+
+        if (moreButtons.length === 0) {
+            debugLog('No More/overflow buttons found for current detail view.');
+        }
     }
 
     var refreshTimer = null;
@@ -356,10 +510,15 @@
 
             fetchItem(itemId).then(function (itemInfo) {
                 if (!isVideoItem(itemInfo)) {
+                    removePrimaryButtons();
+                    removeMenuAction();
                     return;
                 }
 
-                upsertActionButton(itemId);
+                var hasPrimaryAction = upsertActionButton(itemId);
+                if (!hasPrimaryAction) {
+                    bindMoreButtons(itemId);
+                }
             }).catch(function () {
                 // Ignore route transitions where item metadata is unavailable.
             });
