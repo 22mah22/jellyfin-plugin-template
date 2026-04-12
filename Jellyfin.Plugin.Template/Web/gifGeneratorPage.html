@@ -319,6 +319,18 @@
                     return url + separator + '_=' + Date.now();
                 }
 
+                function appendAccessToken(url) {
+                    var accessToken = getAccessToken();
+                    var separator;
+
+                    if (!accessToken) {
+                        return url;
+                    }
+
+                    separator = url.indexOf('?') === -1 ? '?' : '&';
+                    return url + separator + 'api_key=' + encodeURIComponent(accessToken);
+                }
+
                 function getAuthHeaders(headers) {
                     var merged = Object.assign({}, headers || {});
 
@@ -430,7 +442,7 @@
                 function setResult(fileName) {
                     var result = document.querySelector('#GifResult');
                     var downloadPath = '/Plugins/GifGenerator/Download/' + encodeURIComponent(fileName);
-                    var downloadUrl = getApiUrl(downloadPath);
+                    var downloadUrl = appendAccessToken(getApiUrl(downloadPath));
                     var anchor = document.createElement('a');
                     var image = document.createElement('img');
 
