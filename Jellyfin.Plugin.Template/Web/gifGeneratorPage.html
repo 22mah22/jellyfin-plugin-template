@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>GIF Generator</title>
+</head>
+<body>
+    <div id="GifGeneratorPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="GifGeneratorCreateForm">
+                    <h2>Create GIF</h2>
+                    <div class="fieldDescription">Create a GIF from any video item by entering its item id and generation settings.</div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifItemId">Item ID</label>
+                        <input id="GifItemId" name="GifItemId" type="text" is="emby-input" required />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifStartTime">Start Time (mm:ss or hh:mm:ss)</label>
+                        <input id="GifStartTime" name="GifStartTime" type="text" is="emby-input" value="00:00" required />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifLength">Length (seconds)</label>
+                        <input id="GifLength" name="GifLength" type="number" min="0.1" step="0.1" value="3" is="emby-input" required />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifFps">FPS (0 = plugin default)</label>
+                        <input id="GifFps" name="GifFps" type="number" min="0" step="1" value="0" is="emby-input" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifWidth">Width (0 = plugin default)</label>
+                        <input id="GifWidth" name="GifWidth" type="number" min="0" step="1" value="0" is="emby-input" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifSubtitle">Subtitle Stream</label>
+                        <select id="GifSubtitle" name="GifSubtitle" is="emby-select">
+                            <option value="">No subtitles</option>
+                        </select>
+                    </div>
+
+                    <div style="display: flex; gap: .75em; flex-wrap: wrap; margin-top: 1em;">
+                        <button id="LoadSubtitlesButton" is="emby-button" type="button" class="raised emby-button">
+                            <span>Load Subtitles</span>
+                        </button>
+                        <button is="emby-button" type="submit" class="raised button-submit emby-button">
+                            <span>Create GIF</span>
+                        </button>
+                    </div>
+
+                    <div id="GifStatus" class="fieldDescription" style="margin-top: 1em;"></div>
+                    <div id="GifResult" style="margin-top: 1em;"></div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            (function () {
+                'use strict';
+
+                function getApiToken() {
+                    if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
+                        return window.ApiClient.accessToken() || '';
+                    }
+
+                    return '';
+                }
+
+                function buildApiUrl(path) {
+                    var token = getApiToken();
+                    var separator = path.indexOf('?') === -1 ? '?' : '&';
+                    return token ? path + separator + 'api_key=' + encodeURIComponent(token) : path;
+                }
+
+                function parseTimecode(rawValue) {
+                    var raw = rawValue.trim();
+                    var parts;
+                    var seconds;
+                    var minutes;
+                    var hours;
+
+                    if (!raw) {
+                        throw new Error('Start time is required.');
+                    }
+
+                    parts = raw.split(':');
+                    if (parts.length < 2 || parts.length > 3) {
+                        throw new Error('Start time must use mm:ss or hh:mm:ss format.');
+                    }
+
+                    seconds = Number(parts[parts.length - 1]);
+                    minutes = Number(parts[parts.length - 2]);
+                    hours = Number(parts.length === 3 ? parts[0] : 0);
+
+                    if (Number.isNaN(seconds) || Number.isNaN(minutes) || Number.isNaN(hours) || seconds >= 60 || minutes >= 60 || seconds < 0 || minutes < 0 || hours < 0) {
+                        throw new Error('Invalid start time.');
+                    }
+
+                    return (hours * 3600) + (minutes * 60) + seconds;
+                }
+
+                function subtitleLabel(stream) {
+                    var parts = [];
+
+                    if (stream.language || stream.Language) {
+                        parts.push(stream.language || stream.Language);
+                    }
+
+                    if (stream.displayTitle || stream.DisplayTitle) {
+                        parts.push(stream.displayTitle || stream.DisplayTitle);
+                    }
+
+                    if ((stream.isDefault || stream.IsDefault) === true) {
+                        parts.push('Default');
+                    }
+
+                    if ((stream.isForced || stream.IsForced) === true) {
+                        parts.push('Forced');
+                    }
+
+                    return parts.length ? parts.join(' - ') : 'Subtitle stream ' + (stream.streamIndex || stream.StreamIndex);
+                }
+
+                function setStatus(text, isError) {
+                    var node = document.querySelector('#GifStatus');
+                    node.textContent = text;
+                    node.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'var(--theme-primary-color, #52b54b)';
+                }
+
+                function setResult(fileName) {
+                    var result = document.querySelector('#GifResult');
+                    var downloadPath = '/Plugins/GifGenerator/Download/' + encodeURIComponent(fileName);
+                    var downloadUrl = buildApiUrl(downloadPath);
+                    var anchor = document.createElement('a');
+                    var image = document.createElement('img');
+
+                    result.innerHTML = '';
+
+                    anchor.href = downloadUrl;
+                    anchor.target = '_blank';
+                    anchor.rel = 'noopener';
+                    anchor.textContent = 'Download ' + fileName;
+
+                    image.alt = 'Generated GIF preview';
+                    image.src = downloadUrl + '&_=' + Date.now();
+                    image.style.display = 'block';
+                    image.style.marginTop = '.5em';
+                    image.style.maxWidth = '100%';
+
+                    result.appendChild(anchor);
+                    result.appendChild(image);
+                }
+
+                function populateSubtitleSelect(subtitles) {
+                    var select = document.querySelector('#GifSubtitle');
+
+                    select.innerHTML = '<option value="">No subtitles</option>';
+
+                    subtitles.forEach(function (stream) {
+                        var option = document.createElement('option');
+                        var index = stream.streamIndex ?? stream.StreamIndex;
+                        var textBased = stream.isTextBased ?? stream.IsTextBased;
+
+                        option.value = index;
+                        option.textContent = subtitleLabel(stream);
+
+                        if (textBased === false) {
+                            option.disabled = true;
+                        }
+
+                        select.appendChild(option);
+                    });
+                }
+
+                function fetchSubtitles(itemId) {
+                    return fetch(buildApiUrl('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId)), {
+                        method: 'GET',
+                        credentials: 'same-origin'
+                    }).then(function (response) {
+                        if (!response.ok) {
+                            return response.text().then(function (text) {
+                                throw new Error(text || ('Failed to load subtitles (' + response.status + ')'));
+                            });
+                        }
+
+                        return response.json();
+                    }).then(function (payload) {
+                        return payload.subtitles || payload.Subtitles || [];
+                    });
+                }
+
+                function loadSubtitles() {
+                    var itemId = document.querySelector('#GifItemId').value.trim();
+
+                    if (!itemId) {
+                        setStatus('Enter an item id before loading subtitles.', true);
+                        return;
+                    }
+
+                    setStatus('Loading subtitles...', false);
+                    populateSubtitleSelect([]);
+
+                    fetchSubtitles(itemId).then(function (subtitles) {
+                        populateSubtitleSelect(subtitles);
+                        setStatus('Subtitles loaded.', false);
+                    }).catch(function (error) {
+                        setStatus('Could not load subtitles: ' + error.message, true);
+                    });
+                }
+
+                function submitCreate(event) {
+                    var itemId;
+                    var startSeconds;
+                    var payload;
+                    var subtitleValue;
+
+                    event.preventDefault();
+
+                    itemId = document.querySelector('#GifItemId').value.trim();
+                    if (!itemId) {
+                        setStatus('Item id is required.', true);
+                        return false;
+                    }
+
+                    try {
+                        startSeconds = parseTimecode(document.querySelector('#GifStartTime').value);
+                    } catch (error) {
+                        setStatus(error.message, true);
+                        return false;
+                    }
+
+                    payload = {
+                        itemId: itemId,
+                        startSeconds: startSeconds,
+                        lengthSeconds: Number(document.querySelector('#GifLength').value),
+                        fps: Number(document.querySelector('#GifFps').value) || 0,
+                        width: Number(document.querySelector('#GifWidth').value) || 0
+                    };
+
+                    subtitleValue = document.querySelector('#GifSubtitle').value;
+                    if (subtitleValue !== '') {
+                        payload.subtitleStreamIndex = Number(subtitleValue);
+                    }
+
+                    document.querySelector('#GifResult').innerHTML = '';
+                    setStatus('Generating GIF...', false);
+
+                    fetch(buildApiUrl('/Plugins/GifGenerator/Create'), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload)
+                    }).then(function (response) {
+                        if (!response.ok) {
+                            return response.text().then(function (text) {
+                                throw new Error(text || ('Create failed (' + response.status + ')'));
+                            });
+                        }
+
+                        return response.json();
+                    }).then(function (data) {
+                        var fileName = data.fileName || data.FileName;
+
+                        if (!fileName) {
+                            throw new Error('Create endpoint did not return a file name.');
+                        }
+
+                        setResult(fileName);
+                        setStatus('GIF generated.', false);
+                    }).catch(function (error) {
+                        setStatus('Failed: ' + error.message, true);
+                    });
+
+                    return false;
+                }
+
+                document.querySelector('#GifGeneratorPage').addEventListener('pageshow', function () {
+                    setStatus('Ready.', false);
+                    document.querySelector('#GifResult').innerHTML = '';
+                    populateSubtitleSelect([]);
+                });
+
+                document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);
+                document.querySelector('#GifGeneratorCreateForm').addEventListener('submit', submitCreate);
+            })();
+        </script>
+    </div>
+</body>
+</html>

@@ -48,8 +48,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             },
             new PluginPageInfo
             {
-                Name = "gifGeneratorItemAction.js",
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.gifGeneratorItemAction.js", GetType().Namespace)
+                Name = "gifGeneratorPage",
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.gifGeneratorPage.html", GetType().Namespace)
             }
         ];
     }
