@@ -77,7 +77,6 @@
                 'use strict';
 
                 var gifPageRoute = '#!/gif-generator';
-                var legacyGifPageRoute = '#!/configurationpage?name=gifGeneratorPage';
                 var isAuthorized = false;
                 var hasInitialized = false;
                 var initPromise = null;
@@ -138,7 +137,7 @@
                 }
 
                 function getLoginRoute() {
-                    return '#!/login.html?returnurl=' + encodeURIComponent(legacyGifPageRoute);
+                    return '#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
                 }
 
                 function trimTrailingSlashes(value) {
@@ -170,36 +169,7 @@
                 }
 
                 function getFullyQualifiedLoginRoute() {
-                    return getBaseUrlPrefix() + '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(legacyGifPageRoute);
-                }
-
-                function tryPromoteDedicatedRoute() {
-                    var hash = window.location.hash || '';
-                    var search = window.location.search || '';
-                    var currentParams = new URLSearchParams(search);
-                    var legacyHashPrefix = '#!/configurationpage?name=gifGeneratorPage';
-                    var isLegacyHashRoute = hash.indexOf(legacyHashPrefix) === 0;
-                    var isDirectConfigPath = window.location.pathname.indexOf('/web/configurationpage') !== -1
-                        && (currentParams.get('name') || '').toLowerCase() === 'gifgeneratorpage';
-                    var itemId = '';
-                    var dedicatedRoute;
-
-                    if (!isLegacyHashRoute && !isDirectConfigPath) {
-                        return;
-                    }
-
-                    if (isLegacyHashRoute) {
-                        itemId = (new URLSearchParams(hash.slice(legacyHashPrefix.length).replace(/^[?&]/, ''))).get('itemId') || '';
-                    } else {
-                        itemId = currentParams.get('itemId') || currentParams.get('id') || '';
-                    }
-
-                    dedicatedRoute = gifPageRoute;
-                    if (itemId) {
-                        dedicatedRoute += '?itemId=' + encodeURIComponent(itemId);
-                    }
-
-                    window.history.replaceState({}, document.title, '/web/index.html' + dedicatedRoute);
+                    return getBaseUrlPrefix() + '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
                 }
 
                 function setFormEnabled(isEnabled) {
@@ -229,6 +199,37 @@
                     return new Promise(function (resolve) {
                         setTimeout(resolve, ms);
                     });
+                }
+
+                function ensureClientReadyAsync() {
+                    var retryDelaysMs = [0, 200, 350, 500, 800];
+                    var attempt = 0;
+
+                    function hasUsableClient() {
+                        return Boolean(
+                            window.ApiClient
+                            && typeof window.ApiClient.getUrl === 'function'
+                            && typeof window.ApiClient.getAuthorizationHeader === 'function');
+                    }
+
+                    function probe() {
+                        if (hasUsableClient() && isAuthenticated()) {
+                            return Promise.resolve({ ready: true, authenticated: true });
+                        }
+
+                        if (hasUsableClient()) {
+                            return Promise.resolve({ ready: true, authenticated: false });
+                        }
+
+                        if (attempt < retryDelaysMs.length - 1) {
+                            attempt += 1;
+                            return sleep(retryDelaysMs[attempt]).then(probe);
+                        }
+
+                        return Promise.resolve({ ready: false, authenticated: false });
+                    }
+
+                    return probe();
                 }
 
                 function redirectToLoginWithFallback() {
@@ -574,6 +575,7 @@
                 async function onPageShow() {
                     var params;
                     var itemId;
+                    var clientState;
                     var sessionState;
 
                     if (hasInitialized) {
@@ -588,6 +590,13 @@
                         setStatus('Checking session...', false);
                         setFormEnabled(false);
                         clearAuthWarning();
+
+                        clientState = await ensureClientReadyAsync();
+
+                        if (!clientState.ready) {
+                            setStatus('Jellyfin client is still loading. Please open this page again in a moment.', true);
+                            return;
+                        }
 
                         sessionState = await checkSessionAsync();
 
@@ -633,9 +642,8 @@
                 pageElement.addEventListener('pageshow', onPageShow);
                 pageElement.addEventListener('viewshow', onPageShow);
 
-                tryPromoteDedicatedRoute();
                 setFormEnabled(false);
-                setStatus('Checking session...', false);
+                setStatus('Waiting for Jellyfin client...', false);
 
                 document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);
                 document.querySelector('#GifGeneratorCreateForm').addEventListener('submit', submitCreate);
