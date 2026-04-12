@@ -87,6 +87,16 @@
                     return token ? path + separator + 'api_key=' + encodeURIComponent(token) : path;
                 }
 
+                function getPageQueryParams() {
+                    var hash = window.location.hash || '';
+                    var qIndex = hash.indexOf('?');
+                    if (qIndex === -1) {
+                        return new URLSearchParams();
+                    }
+
+                    return new URLSearchParams(hash.slice(qIndex + 1));
+                }
+
                 function parseTimecode(rawValue) {
                     var raw = rawValue.trim();
                     var parts;
@@ -311,9 +321,16 @@
                 }
 
                 document.querySelector('#GifGeneratorPage').addEventListener('pageshow', function () {
+                    var params = getPageQueryParams();
+                    var itemId = (params.get('itemId') || params.get('id') || '').trim();
+
                     setStatus('Ready.', false);
                     document.querySelector('#GifResult').innerHTML = '';
                     populateSubtitleSelect([]);
+
+                    if (itemId) {
+                        document.querySelector('#GifItemId').value = itemId;
+                    }
                 });
 
                 document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);

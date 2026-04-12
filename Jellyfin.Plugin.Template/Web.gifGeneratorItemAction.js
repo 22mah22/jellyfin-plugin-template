@@ -77,6 +77,15 @@
         return parseItemIdFromContext() || parseItemIdFromHash();
     }
 
+    function navigateToGeneratorPage(itemId) {
+        var route = '#!/configurationpage?name=gifGeneratorPage';
+        if (itemId) {
+            route += '&itemId=' + encodeURIComponent(itemId);
+        }
+
+        window.location.hash = route;
+    }
+
     function isVideoItem(item) {
         if (!item) {
             return false;
@@ -365,12 +374,7 @@
             if (!currentItemId) {
                 return;
             }
-
-            fetchItem(currentItemId).then(function (currentItemInfo) {
-                openModalForItem(currentItemId, currentItemInfo);
-            }).catch(function () {
-                openModalForItem(currentItemId, { Name: currentItemId });
-            });
+            navigateToGeneratorPage(currentItemId);
         });
 
         return button;
