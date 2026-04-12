@@ -31,18 +31,62 @@
         window.console.debug.apply(window.console, args);
     }
 
-    function getApiToken() {
-        if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
-            return window.ApiClient.accessToken() || '';
-        }
-
-        return '';
+    function normalizeApiPath(path) {
+        return path.charAt(0) === '/' ? path.slice(1) : path;
     }
 
-    function buildApiUrl(path) {
-        var token = getApiToken();
-        var separator = path.indexOf('?') === -1 ? '?' : '&';
-        return token ? path + separator + 'api_key=' + encodeURIComponent(token) : path;
+    function getApiUrl(path) {
+        if (window.ApiClient && typeof window.ApiClient.getUrl === 'function') {
+            return window.ApiClient.getUrl(normalizeApiPath(path));
+        }
+
+        return path;
+    }
+
+    function appendCacheBuster(url) {
+        var separator = url.indexOf('?') === -1 ? '?' : '&';
+        return url + separator + '_=' + Date.now();
+    }
+
+    function getAuthHeaders(headers) {
+        var merged = Object.assign({}, headers || {});
+
+        if (window.ApiClient && typeof window.ApiClient.getAuthorizationHeader === 'function') {
+            merged.Authorization = window.ApiClient.getAuthorizationHeader();
+        } else if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
+            merged['X-Emby-Token'] = window.ApiClient.accessToken() || '';
+        }
+
+        return merged;
+    }
+
+    function parseErrorMessage(response) {
+        if (response.status === 401 || response.status === 403) {
+            return Promise.resolve('Session expired or unauthorized — please sign in again.');
+        }
+
+        return response.text().then(function (text) {
+            return text || ('Request failed (' + response.status + ')');
+        });
+    }
+
+    function apiRequest(path, options) {
+        var requestOptions = options || {};
+
+        return fetch(getApiUrl(path), {
+            method: requestOptions.method || 'GET',
+            headers: getAuthHeaders(requestOptions.headers),
+            body: requestOptions.body,
+            credentials: requestOptions.credentials
+        }).then(function (response) {
+            if (!response.ok) {
+                return parseErrorMessage(response).then(function (message) {
+                    throw new Error(message);
+                });
+            }
+
+            return response;
+        });
     }
 
     function parseItemIdFromHash() {
@@ -101,16 +145,9 @@
     }
 
     function fetchSubtitles(itemId) {
-        return fetch(buildApiUrl('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId)), {
-            method: 'GET',
-            credentials: 'same-origin'
+        return apiRequest('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId), {
+            method: 'GET'
         }).then(function (response) {
-            if (!response.ok) {
-                return response.text().then(function (text) {
-                    throw new Error(text || ('Failed to load subtitles (' + response.status + ')'));
-                });
-            }
-
             return response.json();
         }).then(function (payload) {
             return payload.subtitles || payload.Subtitles || [];
@@ -214,7 +251,7 @@
 
         var img = document.createElement('img');
         img.alt = 'Generated GIF preview';
-        img.src = downloadUrl + '&_=' + Date.now();
+        img.src = appendCacheBuster(downloadUrl);
 
         result.appendChild(anchor);
         result.appendChild(img);
@@ -301,26 +338,19 @@
         setStatus('Generating GIF...', false);
         document.getElementById('gifGeneratorResult').innerHTML = '';
 
-        fetch(buildApiUrl('/Plugins/GifGenerator/Create'), {
+        apiRequest('/Plugins/GifGenerator/Create', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'same-origin',
             body: JSON.stringify(payload)
         }).then(function (response) {
-            if (!response.ok) {
-                return response.text().then(function (text) {
-                    throw new Error(text || ('Create failed (' + response.status + ')'));
-                });
-            }
-
             return response.json();
         }).then(function (data) {
             var path = data.downloadUrl || data.DownloadUrl;
             var fileName = data.fileName || data.FileName;
             var normalizedPath = path.charAt(0) === '/' ? path : '/' + path;
-            var downloadUrl = buildApiUrl(normalizedPath);
+            var downloadUrl = getApiUrl(normalizedPath);
             setStatus('GIF generated.', false);
             setResult(downloadUrl, fileName);
         }).catch(function (error) {
