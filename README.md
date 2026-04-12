@@ -10,6 +10,7 @@ This repository now contains a Jellyfin plugin that lets authenticated users gen
 - Optional internal subtitle stream selection for burn-in rendering.
 - Secure GIF download endpoint for generated files.
 - Configurable maximum GIF length, default FPS, and default width.
+- Automatic cleanup of generated GIFs in `DataPath/plugins/gif-generator/generated` based on configurable retention (default 7 days), with a minimum retention floor and count-based pruning guardrail.
 
 ## API
 
@@ -94,6 +95,13 @@ Open the plugin settings page in Jellyfin to control:
 - Maximum GIF length (seconds)
 - Default FPS
 - Default width
+- GIF retention window (hours) used by periodic cleanup during create/download requests
+
+Generated GIF files are cleaned up automatically when plugin endpoints are used:
+
+- Files older than `GifRetentionHours` are deleted using UTC file timestamps.
+- Retention is clamped to a safe floor/ceiling (minimum 1 hour, maximum 8760 hours).
+- If storage keeps growing, cleanup also prunes oldest files beyond the built-in max file count guardrail.
 
 Daily GIF creation is exposed as a **Create GIF** action button on video item detail pages in the Jellyfin web client.
 The button opens a lightweight form that loads subtitle options for the current item and calls the plugin API.

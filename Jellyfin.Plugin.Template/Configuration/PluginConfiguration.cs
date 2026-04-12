@@ -15,6 +15,7 @@ public class PluginConfiguration : BasePluginConfiguration
         MaxGifLengthSeconds = 15;
         DefaultFps = 12;
         DefaultWidth = 480;
+        GifRetentionHours = 168;
     }
 
     /// <summary>
@@ -31,4 +32,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the default gif width used during generation.
     /// </summary>
     public int DefaultWidth { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of hours generated gifs are retained before cleanup.
+    /// </summary>
+    public int GifRetentionHours { get; set; }
 }
