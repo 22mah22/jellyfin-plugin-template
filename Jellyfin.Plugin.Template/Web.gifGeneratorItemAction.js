@@ -1,6 +1,8 @@
 (function () {
     'use strict';
 
+    // Optional enhancement entry-point only.
+    // This helper must stay non-blocking and must never replace the canonical #!/gif-generator route.
     var BUTTON_CLASS = 'gifGeneratorItemActionButton';
 
     function parseItemIdFromHash() {
