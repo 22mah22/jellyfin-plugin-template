@@ -261,8 +261,9 @@
                     }, 250);
                 }
 
-                function checkSessionAsync() {
+                function checkSessionAsync(options) {
                     var retryDelaysMs = [0, 350, 700];
+                    var maxAttempts = (options && options.singleAttempt) ? 1 : retryDelaysMs.length;
                     var attempt = 0;
 
                     function probe() {
@@ -276,7 +277,7 @@
                             }
 
                             if (response.status === 401 || response.status === 403) {
-                                if (attempt < retryDelaysMs.length - 1) {
+                                if (attempt < maxAttempts - 1) {
                                     attempt += 1;
                                     return sleep(retryDelaysMs[attempt]).then(probe);
                                 }
@@ -284,14 +285,14 @@
                                 return { authorized: false, unauthorized: true };
                             }
 
-                            if (attempt < retryDelaysMs.length - 1) {
+                            if (attempt < maxAttempts - 1) {
                                 attempt += 1;
                                 return sleep(retryDelaysMs[attempt]).then(probe);
                             }
 
                             return { authorized: false, unauthorized: false, status: response.status };
                         }).catch(function () {
-                            if (attempt < retryDelaysMs.length - 1) {
+                            if (attempt < maxAttempts - 1) {
                                 attempt += 1;
                                 return sleep(retryDelaysMs[attempt]).then(probe);
                             }
@@ -611,11 +612,22 @@
                         clientState = await ensureClientReadyAsync();
 
                         if (!clientState.ready) {
-                            setStatus('Jellyfin client is still loading. Please open this page again in a moment.', true);
-                            return;
-                        }
+                            setStatus('Jellyfin client is still loading. Verifying session...', false);
+                            sessionState = await checkSessionAsync({ singleAttempt: true });
 
-                        sessionState = await checkSessionAsync();
+                            if (!sessionState.authorized) {
+                                if (sessionState.unauthorized) {
+                                    setUnauthorizedState('You are not signed in. Redirecting to the Jellyfin login page...');
+                                    redirectToLoginWithFallback();
+                                    return;
+                                }
+
+                                setStatus('Jellyfin client is still loading. Please open this page again in a moment.', false);
+                                return;
+                            }
+                        } else {
+                            sessionState = await checkSessionAsync();
+                        }
 
                         if (!sessionState.authorized) {
                             if (sessionState.unauthorized) {
