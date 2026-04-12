@@ -140,8 +140,36 @@
                     return '#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
                 }
 
+                function trimTrailingSlashes(value) {
+                    return (value || '').replace(/\/+$/, '');
+                }
+
+                function getBaseUrlPrefix() {
+                    var serverAddress = '';
+                    var webPathIndex;
+
+                    if (window.ApiClient) {
+                        serverAddress = window.ApiClient._serverAddress
+                            || window.ApiClient.serverAddress
+                            || (window.ApiClient._serverInfo && window.ApiClient._serverInfo.Address)
+                            || (window.ApiClient.serverInfo && window.ApiClient.serverInfo.Address)
+                            || '';
+                    }
+
+                    if (serverAddress) {
+                        return trimTrailingSlashes(serverAddress);
+                    }
+
+                    webPathIndex = window.location.pathname.indexOf('/web/');
+                    if (webPathIndex !== -1) {
+                        return trimTrailingSlashes(window.location.origin + window.location.pathname.slice(0, webPathIndex));
+                    }
+
+                    return trimTrailingSlashes(window.location.origin);
+                }
+
                 function getFullyQualifiedLoginRoute() {
-                    return '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
+                    return getBaseUrlPrefix() + '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
                 }
 
                 function setFormEnabled(isEnabled) {
