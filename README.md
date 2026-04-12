@@ -111,7 +111,7 @@ Use the dedicated in-app route:
 
 If a user opens this route without a valid Jellyfin session token/current user context, the page immediately redirects to Jellyfin login and returns to the same route after sign-in.
 
-Video detail-page actions can still be used as an enhancement in supported clients/layouts and now route users to the dedicated page with the current item id pre-filled.
+If item-level actions are needed in the future, they can be reintroduced in a separate, explicitly versioned enhancement pass.
 
 ## Installing via a custom plugin repository
 
