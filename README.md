@@ -103,8 +103,12 @@ Generated GIF files are cleaned up automatically when plugin endpoints are used:
 - Retention is clamped to a safe floor/ceiling (minimum 1 hour, maximum 8760 hours).
 - If storage keeps growing, cleanup also prunes oldest files beyond the built-in max file count guardrail.
 
-Daily GIF creation is exposed as a **Create GIF** action button on video item detail pages in the Jellyfin web client.
-The button opens a lightweight form that loads subtitle options for the current item and calls the plugin API.
+Daily GIF creation is exposed as a dedicated **GIF Generator** user page in the main menu.
+Use Jellyfin's resolved route format:
+
+`#!/configurationpage?name=gifGeneratorPage`
+
+Video detail-page actions can still be used as an enhancement in supported clients/layouts and now route users to the dedicated page with the current item id pre-filled.
 
 ## Installing via a custom plugin repository
 
