@@ -44,6 +44,16 @@
                         </select>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifSubtitleFontSize">Subtitle Font Size (optional)</label>
+                        <input id="GifSubtitleFontSize" name="GifSubtitleFontSize" type="number" min="1" max="256" step="1" is="emby-input" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifSubtitleTimingOffset">Subtitle Timing Offset (optional)</label>
+                        <input id="GifSubtitleTimingOffset" name="GifSubtitleTimingOffset" type="text" is="emby-input" placeholder="+500ms, -1.2s, +00:01.250, -01:02:03.5" pattern="^[+-]?(?:(?:\d+(?:\.\d+)?(?:ms|s))|(?:(?:\d+:)?[0-5]?\d:[0-5]?\d(?:\.\d+)?))$" />
+                    </div>
+
                     <div style="display: flex; gap: .75em; flex-wrap: wrap; margin-top: 1em;">
                         <button id="LoadSubtitlesButton" is="emby-button" type="button" class="raised emby-button">
                             <span>Load Subtitles</span>
@@ -218,6 +228,9 @@
                     var startSeconds;
                     var payload;
                     var subtitleValue;
+                    var subtitleFontSizeValue;
+                    var subtitleFontSize;
+                    var subtitleTimingOffset;
 
                     event.preventDefault();
 
@@ -245,6 +258,22 @@
                     subtitleValue = document.querySelector('#GifSubtitle').value;
                     if (subtitleValue !== '') {
                         payload.subtitleStreamIndex = Number(subtitleValue);
+                    }
+
+                    subtitleFontSizeValue = document.querySelector('#GifSubtitleFontSize').value.trim();
+                    if (subtitleFontSizeValue !== '') {
+                        subtitleFontSize = Number(subtitleFontSizeValue);
+                        if (!Number.isInteger(subtitleFontSize) || subtitleFontSize < 1 || subtitleFontSize > 256) {
+                            setStatus('Subtitle font size must be a whole number between 1 and 256.', true);
+                            return false;
+                        }
+
+                        payload.subtitleFontSize = subtitleFontSize;
+                    }
+
+                    subtitleTimingOffset = document.querySelector('#GifSubtitleTimingOffset').value.trim();
+                    if (subtitleTimingOffset !== '') {
+                        payload.subtitleTimingOffset = subtitleTimingOffset;
                     }
 
                     document.querySelector('#GifResult').innerHTML = '';
