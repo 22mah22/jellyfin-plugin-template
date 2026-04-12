@@ -5,7 +5,7 @@
     <title>GIF Generator</title>
 </head>
 <body>
-    <div id="GifGeneratorPage" data-role="page" class="page type-interior" data-require="emby-input,emby-button,emby-select">
+    <div id="GifGeneratorPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
         <div data-role="content">
             <div class="content-primary">
                 <div id="GifAuthMessage" class="fieldDescription" style="display: none; margin-bottom: 1em; color: var(--theme-danger, #ff6666);"></div>
@@ -454,7 +454,7 @@
                     return false;
                 }
 
-                document.querySelector('#GifGeneratorPage').addEventListener('pageshow', function () {
+                function onPageShow() {
                     var params;
                     var itemId;
 
@@ -472,7 +472,11 @@
                     if (itemId) {
                         document.querySelector('#GifItemId').value = itemId;
                     }
-                });
+                }
+
+                var pageElement = document.querySelector('#GifGeneratorPage');
+                pageElement.addEventListener('pageshow', onPageShow);
+                pageElement.addEventListener('viewshow', onPageShow);
 
                 setFormEnabled(false);
                 setStatus('Checking session...', false);
