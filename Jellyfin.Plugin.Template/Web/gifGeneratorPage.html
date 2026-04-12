@@ -463,11 +463,11 @@
                         return;
                     }
 
-                    hasInitialized = true;
-
                     if (!ensureAuthenticatedOrRedirect()) {
                         return;
                     }
+
+                    hasInitialized = true;
 
                     params = getPageQueryParams();
                     itemId = (params.get('itemId') || params.get('id') || '').trim();
