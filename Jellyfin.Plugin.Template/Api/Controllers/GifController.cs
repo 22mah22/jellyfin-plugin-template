@@ -724,17 +724,6 @@ public class GifController : ControllerBase
         return new SubtitleOffsetParseResult(true, null, seconds);
     }
 
-    private sealed record SubtitleOffsetParseResult(
-        bool IsValid,
-        string? ErrorMessage,
-        double Seconds);
-
-    private sealed record SubtitleSelection(
-        bool IsValid,
-        string? ErrorMessage,
-        int? FfmpegSubtitleOrdinal,
-        string? ExternalSubtitlePath);
-
     private void CleanupGeneratedGifs()
     {
         var outputDirectory = Path.Combine(_serverApplicationPaths.DataPath, "plugins", "gif-generator", "generated");
@@ -764,15 +753,17 @@ public class GifController : ControllerBase
             TryDeleteFile(gifFile, $"retention window ({retentionHours}h)");
         }
 
-        if (gifFiles.Count <= MaxGeneratedGifCount)
+        var remainingGifFiles = gifFiles
+            .Where(file => file.Exists)
+            .OrderBy(file => file.LastWriteTimeUtc)
+            .ToList();
+
+        if (remainingGifFiles.Count <= MaxGeneratedGifCount)
         {
             return;
         }
 
-        var filesToPrune = gifFiles
-            .Where(file => file.Exists)
-            .OrderBy(file => file.LastWriteTimeUtc)
-            .Take(gifFiles.Count - MaxGeneratedGifCount);
+        var filesToPrune = remainingGifFiles.Take(remainingGifFiles.Count - MaxGeneratedGifCount);
 
         foreach (var gifFile in filesToPrune)
         {
@@ -795,4 +786,15 @@ public class GifController : ControllerBase
             _logger.LogWarning(ex, "Failed to delete generated gif file '{Path}' during cleanup for {Reason}.", gifFile.FullName, reason);
         }
     }
+
+    private sealed record SubtitleOffsetParseResult(
+        bool IsValid,
+        string? ErrorMessage,
+        double Seconds);
+
+    private sealed record SubtitleSelection(
+        bool IsValid,
+        string? ErrorMessage,
+        int? FfmpegSubtitleOrdinal,
+        string? ExternalSubtitlePath);
 }
