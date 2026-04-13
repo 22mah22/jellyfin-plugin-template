@@ -1,9 +1,10 @@
+using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Channels;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Channels;
 using MediaBrowser.Model.Dto;
-using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -152,9 +153,8 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
             .GetItemList(new InternalItemsQuery
             {
                 Recursive = true,
-                HasPath = true,
                 IsVirtualItem = false,
-                MediaTypes = ["Video"],
+                MediaTypes = [MediaType.Video],
                 Limit = MaxLibraryResults
             })
             .ToList();
