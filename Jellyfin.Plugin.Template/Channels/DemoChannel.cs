@@ -87,7 +87,7 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
             ContentType = ChannelMediaContentType.Clip,
             Overview = "POC placeholder entry. Playback is intentionally not implemented.",
             RunTimeTicks = TimeSpan.FromSeconds(5).Ticks,
-            DateModified = DateTimeOffset.UtcNow
+            DateModified = DateTime.UtcNow
         };
 
         return Task.FromResult(new ChannelItemResult
@@ -107,7 +107,6 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
             Id = $"{PocItemId}-media-source",
             Name = "POC Placeholder Source",
             Path = "plugin-demo://not-implemented",
-            Protocol = MediaProtocol.Http,
             IsRemote = true,
             SupportsDirectPlay = false,
             SupportsDirectStream = false,
