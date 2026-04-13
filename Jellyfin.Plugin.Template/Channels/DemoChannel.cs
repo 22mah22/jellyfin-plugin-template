@@ -34,6 +34,30 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
     public ChannelParentalRating ParentalRating => ChannelParentalRating.GeneralAudience;
 
     /// <inheritdoc />
+    public string DataVersion => "1";
+
+    /// <inheritdoc />
+    public string HomePageUrl => "https://example.invalid/plugin-demo-channel";
+
+    /// <inheritdoc />
+    public InternalChannelFeatures GetChannelFeatures()
+    {
+        return new InternalChannelFeatures
+        {
+            MediaTypes = [ChannelMediaType.Video],
+            ContentTypes = [ChannelMediaContentType.Clip],
+            SupportsContentDownloading = false
+        };
+    }
+
+    /// <inheritdoc />
+    public bool IsEnabledFor(string userId)
+    {
+        _logger.LogInformation("DemoChannel.IsEnabledFor invoked for user {UserId}.", userId);
+        return true;
+    }
+
+    /// <inheritdoc />
     public IEnumerable<ImageType> GetSupportedChannelImages()
     {
         return Array.Empty<ImageType>();
