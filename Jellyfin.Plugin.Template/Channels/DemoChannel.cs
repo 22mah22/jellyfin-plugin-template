@@ -1,26 +1,31 @@
 using MediaBrowser.Controller.Channels;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Channels;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Template.Channels;
 
 /// <summary>
-/// Minimal proof-of-concept channel that exposes a single static item.
+/// Minimal proof-of-concept channel that exposes a single video item.
 /// </summary>
 internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
 {
     private const string PocItemId = "poc-item-no-playback";
+    private readonly ILibraryManager _libraryManager;
     private readonly ILogger<DemoChannel> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DemoChannel"/> class.
     /// </summary>
+    /// <param name="libraryManager">The library manager.</param>
     /// <param name="logger">The logger.</param>
-    public DemoChannel(ILogger<DemoChannel> logger)
+    public DemoChannel(ILibraryManager libraryManager, ILogger<DemoChannel> logger)
     {
+        _libraryManager = libraryManager;
         _logger = logger;
     }
 
@@ -78,16 +83,49 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
             query.UserId,
             query.FolderId ?? "<root>");
 
+        var libraryItem = _libraryManager
+            .GetItemList(new InternalItemsQuery
+            {
+                Recursive = true,
+                HasPath = true,
+                IsVirtualItem = false,
+                MediaTypes = [MediaType.Video]
+            })
+            .FirstOrDefault();
+
+        if (libraryItem is null)
+        {
+            _logger.LogInformation("DemoChannel.GetChannelItems found no library videos. Returning fallback POC item.");
+
+            var fallbackItem = new ChannelItemInfo
+            {
+                Id = PocItemId,
+                Name = "POC Item (No Playback)",
+                Type = ChannelItemType.Media,
+                MediaType = ChannelMediaType.Video,
+                ContentType = ChannelMediaContentType.Clip,
+                Overview = "POC placeholder entry. Playback is intentionally not implemented.",
+                RunTimeTicks = TimeSpan.FromSeconds(5).Ticks,
+                DateModified = DateTime.UtcNow
+            };
+
+            return Task.FromResult(new ChannelItemResult
+            {
+                Items = [fallbackItem],
+                TotalRecordCount = 1
+            });
+        }
+
         var item = new ChannelItemInfo
         {
-            Id = PocItemId,
-            Name = "POC Item (No Playback)",
+            Id = libraryItem.Id.ToString("N"),
+            Name = libraryItem.Name,
             Type = ChannelItemType.Media,
             MediaType = ChannelMediaType.Video,
             ContentType = ChannelMediaContentType.Clip,
-            Overview = "POC placeholder entry. Playback is intentionally not implemented.",
-            RunTimeTicks = TimeSpan.FromSeconds(5).Ticks,
-            DateModified = DateTime.UtcNow
+            Overview = libraryItem.Overview,
+            RunTimeTicks = libraryItem.RunTimeTicks,
+            DateModified = libraryItem.DateModified
         };
 
         return Task.FromResult(new ChannelItemResult
