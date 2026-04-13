@@ -3,8 +3,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Channels;
 using MediaBrowser.Model.Dto;
-using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.Querying;
+using MediaBrowser.Controller.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Template.Channels;
@@ -154,7 +153,7 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
                 Recursive = true,
                 HasPath = true,
                 IsVirtualItem = false,
-                MediaTypes = [MediaType.Video],
+                MediaTypes = ["Video"],
                 Limit = MaxLibraryResults
             })
             .ToList();
