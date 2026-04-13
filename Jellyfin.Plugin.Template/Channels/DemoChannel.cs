@@ -1,7 +1,7 @@
 using MediaBrowser.Controller.Channels;
+using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Channels;
 using MediaBrowser.Model.Dto;
-using MediaBrowser.Model.Drawing;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 
