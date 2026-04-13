@@ -1,20 +1,24 @@
+using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Channels;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Channels;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.Querying;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Template.Channels;
 
 /// <summary>
-/// Minimal proof-of-concept channel that exposes a single video item.
+/// Minimal proof-of-concept channel that offers a GIF-focused browsing flow.
 /// </summary>
 internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
 {
-    private const string PocItemId = "poc-item-no-playback";
+    private const string LibraryFolderId = "gif-library-browser";
+    private const string InstructionsItemId = "gif-generator-instructions";
+    private const string FallbackItemId = "poc-item-no-playback";
+    private const int MaxLibraryResults = 50;
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<DemoChannel> _logger;
 
@@ -33,13 +37,13 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
     public string Name => "Plugin Demo Channel";
 
     /// <inheritdoc />
-    public string Description => "Proof-of-concept channel item surface. Playback intentionally not implemented.";
+    public string Description => "Interactive demo surface for launching GIF creation from library items.";
 
     /// <inheritdoc />
     public ChannelParentalRating ParentalRating => ChannelParentalRating.GeneralAudience;
 
     /// <inheritdoc />
-    public string DataVersion => "1";
+    public string DataVersion => "2";
 
     /// <inheritdoc />
     public string HomePageUrl => "https://example.invalid/plugin-demo-channel";
@@ -83,56 +87,12 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
             query.UserId,
             query.FolderId ?? "<root>");
 
-        var libraryItem = _libraryManager
-            .GetItemList(new InternalItemsQuery
-            {
-                Recursive = true,
-                HasPath = true,
-                IsVirtualItem = false,
-                MediaTypes = [MediaType.Video]
-            })
-            .FirstOrDefault();
-
-        if (libraryItem is null)
+        if (string.Equals(query.FolderId, LibraryFolderId, StringComparison.Ordinal))
         {
-            _logger.LogInformation("DemoChannel.GetChannelItems found no library videos. Returning fallback POC item.");
-
-            var fallbackItem = new ChannelItemInfo
-            {
-                Id = PocItemId,
-                Name = "POC Item (No Playback)",
-                Type = ChannelItemType.Media,
-                MediaType = ChannelMediaType.Video,
-                ContentType = ChannelMediaContentType.Clip,
-                Overview = "POC placeholder entry. Playback is intentionally not implemented.",
-                RunTimeTicks = TimeSpan.FromSeconds(5).Ticks,
-                DateModified = DateTime.UtcNow
-            };
-
-            return Task.FromResult(new ChannelItemResult
-            {
-                Items = [fallbackItem],
-                TotalRecordCount = 1
-            });
+            return Task.FromResult(CreateLibraryItemResult());
         }
 
-        var item = new ChannelItemInfo
-        {
-            Id = libraryItem.Id.ToString("N"),
-            Name = libraryItem.Name,
-            Type = ChannelItemType.Media,
-            MediaType = ChannelMediaType.Video,
-            ContentType = ChannelMediaContentType.Clip,
-            Overview = libraryItem.Overview,
-            RunTimeTicks = libraryItem.RunTimeTicks,
-            DateModified = libraryItem.DateModified
-        };
-
-        return Task.FromResult(new ChannelItemResult
-        {
-            Items = [item],
-            TotalRecordCount = 1
-        });
+        return Task.FromResult(CreateRootItemResult());
     }
 
     /// <inheritdoc />
@@ -142,7 +102,7 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
 
         var source = new MediaSourceInfo
         {
-            Id = $"{PocItemId}-media-source",
+            Id = $"{id}-media-source",
             Name = "POC Placeholder Source",
             Path = "plugin-demo://not-implemented",
             IsRemote = true,
@@ -152,5 +112,94 @@ internal sealed class DemoChannel : IChannel, IRequiresMediaInfoCallback
         };
 
         return Task.FromResult<IEnumerable<MediaSourceInfo>>([source]);
+    }
+
+    private ChannelItemResult CreateRootItemResult()
+    {
+        var items = new List<ChannelItemInfo>
+        {
+            new()
+            {
+                Id = LibraryFolderId,
+                Name = "Create GIF From Library Items",
+                Type = ChannelItemType.Folder,
+                FolderType = ChannelFolderType.Container,
+                Overview = "Browse up to 50 local videos. Open an item and use the Create GIF action.",
+                DateModified = DateTime.UtcNow
+            },
+            new()
+            {
+                Id = InstructionsItemId,
+                Name = "How To Create A GIF",
+                Type = ChannelItemType.Media,
+                MediaType = ChannelMediaType.Video,
+                ContentType = ChannelMediaContentType.Clip,
+                Overview = "1) Open the folder item. 2) Pick a video. 3) Click Create GIF in the item actions.",
+                RunTimeTicks = TimeSpan.FromSeconds(5).Ticks,
+                DateModified = DateTime.UtcNow
+            }
+        };
+
+        return new ChannelItemResult
+        {
+            Items = items,
+            TotalRecordCount = items.Count
+        };
+    }
+
+    private ChannelItemResult CreateLibraryItemResult()
+    {
+        var libraryItems = _libraryManager
+            .GetItemList(new InternalItemsQuery
+            {
+                Recursive = true,
+                IsVirtualItem = false,
+                MediaTypes = [MediaType.Video],
+                Limit = MaxLibraryResults
+            })
+            .ToList();
+
+        if (libraryItems.Count == 0)
+        {
+            _logger.LogInformation("DemoChannel.GetChannelItems found no library videos. Returning fallback POC item.");
+
+            var fallbackItem = new ChannelItemInfo
+            {
+                Id = FallbackItemId,
+                Name = "POC Item (No Playback)",
+                Type = ChannelItemType.Media,
+                MediaType = ChannelMediaType.Video,
+                ContentType = ChannelMediaContentType.Clip,
+                Overview = "No local videos were found. Add media to your library, then reopen this channel to create GIFs.",
+                RunTimeTicks = TimeSpan.FromSeconds(5).Ticks,
+                DateModified = DateTime.UtcNow
+            };
+
+            return new ChannelItemResult
+            {
+                Items = [fallbackItem],
+                TotalRecordCount = 1
+            };
+        }
+
+        var items = libraryItems
+            .Select(item => new ChannelItemInfo
+            {
+                Id = item.Id.ToString("N"),
+                Name = item.Name,
+                Type = ChannelItemType.Media,
+                MediaType = ChannelMediaType.Video,
+                ContentType = ChannelMediaContentType.Clip,
+                Overview = item.Overview,
+                RunTimeTicks = item.RunTimeTicks,
+                DateModified = item.DateModified
+            })
+            .ToList();
+
+        return new ChannelItemResult
+        {
+            Items = items,
+            TotalRecordCount = items.Count
+        };
     }
 }
