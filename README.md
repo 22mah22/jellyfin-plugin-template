@@ -160,3 +160,33 @@ This repo now includes the **📦 Build Repository Package** GitHub Actions work
    - Create a GitHub release and upload `jellyfin-plugin-gif-generator.zip`.
 
 After that, Jellyfin clients using the manifest URL above can install/update from the repository.
+
+## IChannel POC (non-functional)
+
+This plugin includes a minimal Jellyfin channel proof-of-concept named **Plugin Demo Channel**.
+
+- The channel exposes one static item: **POC Item (No Playback)**.
+- The channel item is intentionally non-functional (no real stream URL, no transcoding, no library writes, no background jobs).
+- Temporary informational logs are emitted when channel query and media-info callback methods are invoked.
+
+### Registration and behavior
+
+- `ServiceRegistrator` registers `DemoChannel` as an `IChannel` service at startup.
+- `DemoChannel.GetChannelItems(...)` returns a single static media item.
+- `DemoChannel.GetChannelItemMediaInfo(...)` returns a deterministic placeholder media source using `plugin-demo://not-implemented`.
+
+### Validation checklist (local Jellyfin instance)
+
+1. Install and load this plugin in Jellyfin.
+2. Login as a standard non-admin user.
+3. Navigate to Channels and confirm **Plugin Demo Channel** is visible.
+4. Open **POC Item (No Playback)** and confirm the placeholder/non-functional outcome (no crash).
+5. Confirm server logs contain the channel invocation lines.
+
+### Proof artifact: log snippet
+
+A sample log snippet is captured at `docs/ichannel-poc-log-snippet.txt`.
+
+### Proof artifact: screenshot
+
+A runtime screenshot must be captured from a live Jellyfin instance during manual validation. This repository change set does not include a generated screenshot because no Jellyfin server/web-client runtime is available in this execution environment.
