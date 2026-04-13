@@ -107,7 +107,7 @@ Generated GIF files are cleaned up automatically when plugin endpoints are used:
 Daily GIF creation is exposed as a dedicated **GIF Generator** user page in the main menu.
 Use the dedicated in-app route:
 
-`#!/gif-generator`
+`#!/configurationpage?name=gifGeneratorPage`
 
 If a user opens this route without a valid Jellyfin session token/current user context, the page immediately redirects to Jellyfin login and returns to the same route after sign-in.
 
@@ -115,11 +115,11 @@ If item-level actions are needed in the future, they can be reintroduced in a se
 
 ## User Access Contract
 
-- **Canonical UI path:** the authenticated user generation experience is `#!/gif-generator`.
+- **Canonical UI path:** the authenticated user generation experience is `#!/configurationpage?name=gifGeneratorPage`.
 - **Authentication source:** UI access and API calls use Jellyfin session context from `ApiClient` (session token + current user).
 - **API contract:** plugin API endpoints remain protected with `[Authorize]`; no anonymous plugin endpoints are exposed.
 - **Separation of concerns:** `Configuration/configPage.html` is for admin-managed defaults only, while GIF generation is user-facing via the canonical route.
-- **Optional enhancements:** item-detail actions or similar entry points are optional helpers, must be non-blocking, and must never replace `#!/gif-generator` as canonical.
+- **Optional enhancements:** item-detail actions or similar entry points are optional helpers, must be non-blocking, and must never replace `#!/configurationpage?name=gifGeneratorPage` as canonical.
 
 ### Future UI Addition Checklist
 
@@ -168,7 +168,7 @@ This plugin includes a minimal Jellyfin channel proof-of-concept named **Plugin 
 - The channel now exposes an interactive root experience for GIF creation:
   - **Create GIF From Library Items** (folder): browses up to 50 local video items.
   - **How To Create A GIF** (instructional placeholder item).
-- Users can open a channel-provided video item and use the existing **Create GIF** action to jump to `#!/gif-generator` with that item preselected.
+- Users can open a channel-provided video item and use the existing **Create GIF** action to jump to `#!/configurationpage?name=gifGeneratorPage` with that item preselected.
 - Channel playback is still intentionally non-functional (no real stream URL, no transcoding, no library writes, no background jobs).
 - Temporary informational logs are emitted when channel query and media-info callback methods are invoked.
 
@@ -183,7 +183,7 @@ This plugin includes a minimal Jellyfin channel proof-of-concept named **Plugin 
 1. Install and load this plugin in Jellyfin.
 2. Login as a standard non-admin user.
 3. Navigate to Channels and confirm **Plugin Demo Channel** is visible.
-4. Open **Create GIF From Library Items**, select a video, and verify the existing **Create GIF** action routes to `#!/gif-generator` with the selected item.
+4. Open **Create GIF From Library Items**, select a video, and verify the existing **Create GIF** action routes to `#!/configurationpage?name=gifGeneratorPage` with the selected item.
 5. Confirm server logs contain the channel invocation lines.
 
 ### Proof artifact: log snippet

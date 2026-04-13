@@ -2,16 +2,26 @@
     'use strict';
 
     // Optional enhancement entry-point only.
-    // This helper must stay non-blocking and must never replace the canonical #!/gif-generator route.
+    // This helper must stay non-blocking and must never replace the canonical GIF generator route.
     var BUTTON_CLASS = 'gifGeneratorItemActionButton';
 
     var CHANNEL_LIBRARY_FOLDER_ID = 'gif-library-browser';
+    var GENERATOR_PAGE_NAME = 'gifGeneratorPage';
 
     function shouldRedirectChannelFolderToGenerator(hash) {
         var normalizedHash = (hash || '').toLowerCase();
         return normalizedHash.indexOf(CHANNEL_LIBRARY_FOLDER_ID) !== -1
             && normalizedHash.indexOf('channel') !== -1
             && normalizedHash.indexOf('gif-generator') === -1;
+    }
+
+    function shouldRedirectPluginSettingsWrapper(hash) {
+        var normalizedHash = (hash || '').toLowerCase();
+        if (normalizedHash.indexOf('userpluginsettings.html') === -1) {
+            return false;
+        }
+
+        return normalizedHash.indexOf('name=' + GENERATOR_PAGE_NAME.toLowerCase()) !== -1;
     }
 
     function maybeRedirectChannelFolderToGenerator() {
@@ -21,6 +31,15 @@
         }
 
         navigateToGeneratorPage(null);
+    }
+
+    function maybeRedirectPluginSettingsWrapper() {
+        var hash = window.location.hash || '';
+        if (!shouldRedirectPluginSettingsWrapper(hash)) {
+            return;
+        }
+
+        window.location.hash = '#!/configurationpage?name=' + encodeURIComponent(GENERATOR_PAGE_NAME);
     }
 
     function parseItemIdFromHash() {
@@ -56,9 +75,9 @@
     }
 
     function navigateToGeneratorPage(itemId) {
-        var route = '#!/gif-generator';
+        var route = '#!/configurationpage?name=' + encodeURIComponent(GENERATOR_PAGE_NAME);
         if (itemId) {
-            route += '?itemId=' + encodeURIComponent(itemId);
+            route += '&itemId=' + encodeURIComponent(itemId);
         }
 
         window.location.hash = route;
@@ -154,11 +173,13 @@
     }
 
     window.addEventListener('hashchange', function () {
+        maybeRedirectPluginSettingsWrapper();
         maybeRedirectChannelFolderToGenerator();
         refreshActionButton();
     });
     document.addEventListener('viewshow', refreshActionButton, true);
 
+    maybeRedirectPluginSettingsWrapper();
     maybeRedirectChannelFolderToGenerator();
     refreshActionButton();
 })();
