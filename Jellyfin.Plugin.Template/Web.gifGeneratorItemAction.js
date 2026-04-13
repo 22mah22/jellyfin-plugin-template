@@ -5,6 +5,24 @@
     // This helper must stay non-blocking and must never replace the canonical #!/gif-generator route.
     var BUTTON_CLASS = 'gifGeneratorItemActionButton';
 
+    var CHANNEL_LIBRARY_FOLDER_ID = 'gif-library-browser';
+
+    function shouldRedirectChannelFolderToGenerator(hash) {
+        var normalizedHash = (hash || '').toLowerCase();
+        return normalizedHash.indexOf(CHANNEL_LIBRARY_FOLDER_ID) !== -1
+            && normalizedHash.indexOf('channel') !== -1
+            && normalizedHash.indexOf('gif-generator') === -1;
+    }
+
+    function maybeRedirectChannelFolderToGenerator() {
+        var hash = window.location.hash || '';
+        if (!shouldRedirectChannelFolderToGenerator(hash)) {
+            return;
+        }
+
+        navigateToGeneratorPage(null);
+    }
+
     function parseItemIdFromHash() {
         var hash = window.location.hash || '';
         var qIndex = hash.indexOf('?');
@@ -131,8 +149,12 @@
         upsertActionButton(getCurrentItemId());
     }
 
-    window.addEventListener('hashchange', refreshActionButton);
+    window.addEventListener('hashchange', function () {
+        maybeRedirectChannelFolderToGenerator();
+        refreshActionButton();
+    });
     document.addEventListener('viewshow', refreshActionButton, true);
 
+    maybeRedirectChannelFolderToGenerator();
     refreshActionButton();
 })();
