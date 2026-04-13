@@ -100,14 +100,18 @@
         button.dataset.itemId = '';
         button.innerHTML = '<span>Create GIF</span>';
         button.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') {
+                event.stopImmediatePropagation();
+            }
+
             var sourceButton = event.currentTarget;
             var currentItemId = sourceButton && sourceButton.dataset && sourceButton.dataset.itemId
                 ? sourceButton.dataset.itemId
                 : getCurrentItemId();
 
-            if (currentItemId) {
-                navigateToGeneratorPage(currentItemId);
-            }
+            navigateToGeneratorPage(currentItemId);
         });
 
         return button;
