@@ -13,7 +13,7 @@
                     <div class="fieldDescription">This page is for admin defaults only. Daily GIF creation is available from the dedicated user page in the main menu.</div>
                     <div class="fieldDescription">The dedicated main-menu GIF Generator page is the canonical user flow.</div>
                     <div class="inputContainer">
-                        <a is="emby-button" class="raised button-submit block emby-button" href="#!/gif-generator">
+                        <a is="emby-button" class="raised button-submit block emby-button" href="#!/configurationpage?name=gifGeneratorPage">
                             <span>Open GIF Generator</span>
                         </a>
                     </div>
@@ -44,7 +44,7 @@
         </div>
 
         <script type="text/javascript">
-            // Admin-only defaults surface. User-facing generation remains on #!/gif-generator.
+            // Admin-only defaults surface. User-facing generation remains on #!/configurationpage?name=gifGeneratorPage.
             var GifGeneratorConfig = {
                 pluginUniqueId: 'eb5d7894-8eef-4b36-aa6f-5d124e828ce1'
             };

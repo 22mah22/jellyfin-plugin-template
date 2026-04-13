@@ -101,7 +101,7 @@
                     statusRegion.textContent = 'Unauthorized (401/403). Redirecting to sign in...';
                     form.querySelector('button[type="submit"]').disabled = true;
 
-                    var returnUrl = encodeURIComponent('#!/gifGeneratorPage');
+                    var returnUrl = encodeURIComponent('#!/configurationpage?name=gifGeneratorPage');
                     var loginHash = '#!/login.html?returnurl=' + returnUrl;
                     setTimeout(function () {
                         if (window.Dashboard && typeof window.Dashboard.navigate === 'function') {
@@ -119,6 +119,22 @@
 
                 function clearDownload() {
                     downloadRegion.innerHTML = '';
+                }
+
+                function tryPrefillItemIdFromHash() {
+                    var hash = window.location.hash || '';
+                    var qIndex = hash.indexOf('?');
+                    if (qIndex === -1) {
+                        return;
+                    }
+
+                    var params = new URLSearchParams(hash.slice(qIndex + 1));
+                    var hashItemId = params.get('itemId') || params.get('id');
+                    if (!hashItemId) {
+                        return;
+                    }
+
+                    document.querySelector('#itemId').value = hashItemId;
                 }
 
                 function renderDownload(downloadUrl) {
@@ -196,6 +212,8 @@
                         setStatus('Failed to create GIF: ' + (error && error.message ? error.message : String(error)), true);
                     });
                 });
+
+                tryPrefillItemIdFromHash();
             })();
         </script>
     </div>
