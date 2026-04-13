@@ -165,14 +165,17 @@ After that, Jellyfin clients using the manifest URL above can install/update fro
 
 This plugin includes a minimal Jellyfin channel proof-of-concept named **Plugin Demo Channel**.
 
-- The channel exposes one static item: **POC Item (No Playback)**.
-- The channel item is intentionally non-functional (no real stream URL, no transcoding, no library writes, no background jobs).
+- The channel now exposes an interactive root experience for GIF creation:
+  - **Create GIF From Library Items** (folder): browses up to 50 local video items.
+  - **How To Create A GIF** (instructional placeholder item).
+- Users can open a channel-provided video item and use the existing **Create GIF** action to jump to `#!/gif-generator` with that item preselected.
+- Channel playback is still intentionally non-functional (no real stream URL, no transcoding, no library writes, no background jobs).
 - Temporary informational logs are emitted when channel query and media-info callback methods are invoked.
 
 ### Registration and behavior
 
 - `ServiceRegistrator` registers `DemoChannel` as an `IChannel` service at startup.
-- `DemoChannel.GetChannelItems(...)` returns a single static media item.
+- `DemoChannel.GetChannelItems(...)` returns either the interactive root entries or a library-backed list of video items (capped at 50).
 - `DemoChannel.GetChannelItemMediaInfo(...)` returns a deterministic placeholder media source using `plugin-demo://not-implemented`.
 
 ### Validation checklist (local Jellyfin instance)
@@ -180,7 +183,7 @@ This plugin includes a minimal Jellyfin channel proof-of-concept named **Plugin 
 1. Install and load this plugin in Jellyfin.
 2. Login as a standard non-admin user.
 3. Navigate to Channels and confirm **Plugin Demo Channel** is visible.
-4. Open **POC Item (No Playback)** and confirm the placeholder/non-functional outcome (no crash).
+4. Open **Create GIF From Library Items**, select a video, and verify the existing **Create GIF** action routes to `#!/gif-generator` with the selected item.
 5. Confirm server logs contain the channel invocation lines.
 
 ### Proof artifact: log snippet
