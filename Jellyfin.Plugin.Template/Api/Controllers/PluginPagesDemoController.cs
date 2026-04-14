@@ -236,17 +236,45 @@ public class PluginPagesDemoController : ControllerBase
                                             return { token: token, userId: userId };
                                         }
 
-                                        function getBaseUrl() {
-                                            if (window.ApiClient && window.ApiClient._serverAddress) {
-                                                return String(window.ApiClient._serverAddress).replace(/\/+$/, '');
+                                        function normalizeApiPath(path) {
+                                            return path.charAt(0) === '/' ? path.slice(1) : path;
+                                        }
+
+                                        function trimTrailingSlashes(value) {
+                                            return String(value || '').replace(/\/+$/, '');
+                                        }
+
+                                        function getBaseUrlPrefix() {
+                                            var serverAddress = '';
+                                            var webIndex;
+
+                                            if (window.ApiClient) {
+                                                serverAddress = window.ApiClient._serverAddress
+                                                    || window.ApiClient.serverAddress
+                                                    || (window.ApiClient._serverInfo && window.ApiClient._serverInfo.Address)
+                                                    || (window.ApiClient.serverInfo && window.ApiClient.serverInfo.Address)
+                                                    || '';
                                             }
 
-                                            var webIndex = window.location.pathname.indexOf('/web/');
+                                            if (serverAddress) {
+                                                return trimTrailingSlashes(serverAddress);
+                                            }
+
+                                            webIndex = window.location.pathname.indexOf('/web/');
                                             if (webIndex >= 0) {
-                                                return (window.location.origin + window.location.pathname.slice(0, webIndex)).replace(/\/+$/, '');
+                                                return trimTrailingSlashes(window.location.origin + window.location.pathname.slice(0, webIndex));
                                             }
 
-                                            return window.location.origin.replace(/\/+$/, '');
+                                            return trimTrailingSlashes(window.location.origin);
+                                        }
+
+                                        function getApiUrl(path) {
+                                            if (window.ApiClient && typeof window.ApiClient.getUrl === 'function') {
+                                                return window.ApiClient.getUrl(normalizeApiPath(path));
+                                            }
+
+                                            var normalizedPath = path.charAt(0) === '/' ? path : '/' + path;
+                                            return getBaseUrlPrefix() + normalizedPath;
                                         }
 
                                         function buildAuthHeaders(extra) {
@@ -270,7 +298,7 @@ public class PluginPagesDemoController : ControllerBase
 
                                         function apiFetch(path, options) {
                                             var opts = options || {};
-                                            return fetch(getBaseUrl() + (path.charAt(0) === '/' ? path : '/' + path), {
+                                            return fetch(getApiUrl(path), {
                                                 method: opts.method || 'GET',
                                                 headers: buildAuthHeaders(opts.headers),
                                                 body: opts.body,
@@ -395,8 +423,14 @@ public class PluginPagesDemoController : ControllerBase
                                                     subtitles.forEach(function (s) {
                                                         var option = document.createElement('option');
                                                         var idx = s.streamIndex != null ? s.streamIndex : s.StreamIndex;
+                                                        var textBased = s.isTextBased != null ? s.isTextBased : s.IsTextBased;
                                                         option.value = idx;
                                                         option.textContent = (s.language || s.Language || 'und') + ' - ' + (s.displayTitle || s.DisplayTitle || ('Stream ' + idx));
+
+                                                        if (textBased === false) {
+                                                            option.disabled = true;
+                                                        }
+
                                                         select.appendChild(option);
                                                     });
                                                     setStatus('Subtitles loaded.', false);
