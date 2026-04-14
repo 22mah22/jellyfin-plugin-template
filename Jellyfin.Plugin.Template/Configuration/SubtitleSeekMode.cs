@@ -11,17 +11,20 @@ public enum SubtitleSeekMode
     Accurate = 0,
 
     /// <summary>
-    /// Places seek before input for faster startup, with slight subtitle timing drift risk.
+    /// Legacy value retained for backward-compatible configuration deserialization.
     /// </summary>
+    [Obsolete("Deprecated. Values are normalized to Accurate.", error: false)]
     Fast = 1,
 
     /// <summary>
-    /// Uses a coarse seek before input and a fine seek after input as a balance.
+    /// Legacy value retained for backward-compatible configuration deserialization.
     /// </summary>
+    [Obsolete("Deprecated. Values are normalized to Accurate.", error: false)]
     Hybrid = 2,
 
     /// <summary>
-    /// Chooses seek mode from clip start time: accurate for short offsets, hybrid for longer offsets.
+    /// Legacy value retained for backward-compatible configuration deserialization.
     /// </summary>
+    [Obsolete("Deprecated. Values are normalized to Accurate.", error: false)]
     Auto = 3
 }
