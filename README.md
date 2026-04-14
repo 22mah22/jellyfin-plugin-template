@@ -9,7 +9,7 @@ This repository now contains a Jellyfin plugin that lets authenticated users gen
 - Uses Jellyfin's configured encoder path (`EncoderAppPath`) when available and falls back to Jellyfin-aware ffmpeg discovery (`JELLYFIN_FFMPEG`, `FFMPEG_PATH`, then `ffmpeg` on `PATH`).
 - Input parameters: source video item id, clip start time, and clip length.
 - Optional internal subtitle stream selection for burn-in rendering.
-- Subtitle burn-in seeking uses a single supported strategy: `Accurate`.
+- Subtitle burn-in seeking is optimized for subtitle timestamp alignment when burn-in is enabled.
 - Secure GIF download endpoint for generated files.
 - Configurable maximum GIF length, default FPS, and default width.
 - Automatic cleanup of generated GIFs in `DataPath/plugins/gif-generator/generated` based on configurable retention (default 7 days), with a minimum retention floor and count-based pruning guardrail.
@@ -98,11 +98,8 @@ Open the plugin settings page in Jellyfin to control:
 - Default FPS
 - Default width
 - GIF retention window (hours) used by periodic cleanup during create/download requests
-- Subtitle burn-in seek behavior (currently fixed to `Accurate`)
 
-Subtitle burn-in uses a single supported mode:
-
-- `Accurate` (default and only supported mode): input is loaded first (`-i`), then seek is applied (`-ss`) for strongest subtitle timing alignment.
+Subtitle burn-in always loads input first (`-i`) and applies seek after input (`-ss`) for strongest subtitle timing alignment.
 
 Generated GIF files are cleaned up automatically when plugin endpoints are used:
 
@@ -121,7 +118,7 @@ If item-level actions are needed in the future, they can be reintroduced in a se
 
 ## Subtitle Alignment Validation Notes
 
-Accurate subtitle burn-in behavior was validated against common subtitle/container combinations used in Jellyfin libraries:
+Subtitle burn-in seek behavior was validated against common subtitle/container combinations used in Jellyfin libraries:
 
 - MP4 + internal `mov_text`
 - MKV + internal `subrip` (SRT)
@@ -131,9 +128,7 @@ Accurate subtitle burn-in behavior was validated against common subtitle/contain
 
 Observed behavior:
 
-- `Accurate`: best subtitle alignment consistency; may have slower startup for large start offsets compared with pre-input seeking.
-
-Recommendation: `Accurate` is the currently supported mode for subtitle burn-in correctness.
+- Post-input seek placement provides the most consistent subtitle timing alignment, with slower startup possible for large start offsets.
 
 ## User Access Contract
 
