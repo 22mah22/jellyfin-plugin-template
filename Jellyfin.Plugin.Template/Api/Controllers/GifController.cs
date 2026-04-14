@@ -515,7 +515,7 @@ public class GifController : ControllerBase
             return null;
         }
 
-        if (File.Exists(subtitlePath))
+        if (System.IO.File.Exists(subtitlePath))
         {
             return subtitlePath;
         }
@@ -534,7 +534,7 @@ public class GifController : ControllerBase
         if (!Path.IsPathRooted(subtitlePath))
         {
             var relativeCandidate = Path.GetFullPath(Path.Combine(itemDirectory, subtitlePath));
-            if (File.Exists(relativeCandidate))
+            if (System.IO.File.Exists(relativeCandidate))
             {
                 return relativeCandidate;
             }
@@ -547,7 +547,7 @@ public class GifController : ControllerBase
         }
 
         var sameDirectoryCandidate = Path.Combine(itemDirectory, subtitleFileName);
-        if (File.Exists(sameDirectoryCandidate))
+        if (System.IO.File.Exists(sameDirectoryCandidate))
         {
             return sameDirectoryCandidate;
         }
