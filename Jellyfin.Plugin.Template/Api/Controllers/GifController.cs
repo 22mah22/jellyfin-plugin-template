@@ -312,7 +312,7 @@ public class GifController : ControllerBase
         var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
         if (!hasSubtitleBurnIn)
         {
-            // Fast seek before input dramatically improves performance for large offsets.
+            // Seek before input dramatically improves performance for large offsets.
             processInfo.ArgumentList.Add("-ss");
             processInfo.ArgumentList.Add(start);
             processInfo.ArgumentList.Add("-i");
