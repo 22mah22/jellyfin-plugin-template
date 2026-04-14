@@ -3,90 +3,80 @@
 <head>
     <meta charset="utf-8">
     <title>GIF Generator</title>
-    <style>
-        .gifGeneratorRow {
-            display: flex;
-            gap: 1em;
-            flex-wrap: wrap;
-        }
-
-        .gifGeneratorRow .inputContainer {
-            flex: 1 1 220px;
-            min-width: 220px;
-        }
-
-        .gifResult img {
-            margin-top: .5em;
-            max-width: min(100%, 420px);
-            border-radius: 6px;
-        }
-    </style>
 </head>
 <body>
     <div id="GifGeneratorPage" data-role="page" class="page type-interior" data-require="emby-input,emby-button,emby-select">
         <div data-role="content">
             <div class="content-primary">
-                <h2>Create GIF</h2>
-                <div class="fieldDescription">Generate a GIF from a video item.</div>
-                <div id="GifSignInMessage" class="fieldDescription" style="display:none; margin: .75em 0; color: var(--theme-danger, #ff6666);"></div>
+                <div id="GifAuthMessage" class="fieldDescription" style="display: none; margin-bottom: 1em; color: var(--theme-danger, #ff6666);"></div>
+                <form id="GifGeneratorCreateForm">
+                    <fieldset id="GifFormControls" disabled>
+                    <h2>Create GIF</h2>
+                    <div class="fieldDescription">Create a GIF from any video item by searching for its title and generation settings.</div>
 
-                <form id="GifGeneratorForm">
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="itemId">Item ID</label>
-                        <input id="itemId" name="itemId" type="text" is="emby-input" required />
+                        <label class="inputLabel inputLabelUnfocused" for="GifItemSearch">Item Search</label>
+                        <input id="GifItemSearch" name="GifItemSearch" type="text" is="emby-input" placeholder="Search movies, episodes, videos..." autocomplete="off" />
+                        <div id="GifItemSearchResults" class="fieldDescription" role="listbox" aria-label="Item search results" tabindex="0" style="margin-top: .5em; max-height: 16em; overflow-y: auto; border: 1px solid rgba(255,255,255,.2); border-radius: .2em; padding: .4em;"></div>
+                        <div id="GifItemSelectedLabel" class="fieldDescription" style="margin-top: .5em;">Selected: none</div>
                     </div>
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="SubtitleStreamIndex">Subtitle Stream</label>
-                            <select id="SubtitleStreamIndex" name="SubtitleStreamIndex" is="emby-select" disabled>
-                                <option value="">No subtitles</option>
-                            </select>
-                            <div id="SubtitleStatus" class="fieldDescription">Enter an item id to load subtitle streams.</div>
-                        </div>
-                        <div class="inputContainer" style="align-self: flex-end;">
-                            <button id="LoadSubtitlesBtn" is="emby-button" type="button" class="button-link emby-button">
-                                <span>Load subtitles</span>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="StartTimecode">Start Time</label>
-                            <input id="StartTimecode" name="StartTimecode" type="text" is="emby-input" value="00:00" placeholder="hh:mm:ss or mm:ss" required pattern="^\d+:\d{2}(?::\d{2}(?:\.\d+)?)?$|^\d+:\d+(?:\.\d+)?$" />
-                            <div class="fieldDescription">Examples: <code>00:42</code>, <code>01:03:20.5</code>.</div>
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="lengthSeconds">Length Seconds</label>
-                            <input id="lengthSeconds" name="lengthSeconds" type="number" min="0.1" step="0.01" value="3" is="emby-input" required />
-                        </div>
-                    </div>
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="width">Width (optional)</label>
-                            <input id="width" name="width" type="number" min="0" step="1" value="0" is="emby-input" />
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="fps">FPS (optional)</label>
-                            <input id="fps" name="fps" type="number" min="0" step="1" value="0" is="emby-input" />
-                        </div>
-                    </div>
-                    <div class="gifGeneratorRow">
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="SubtitleFontSize">Subtitle Size (optional)</label>
-                            <input id="SubtitleFontSize" name="SubtitleFontSize" type="number" is="emby-input" min="0" max="256" placeholder="0 = default" value="0" />
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel inputLabelUnfocused" for="SubtitleTimingOffset">Subtitle Timing Offset (optional)</label>
-                            <input id="SubtitleTimingOffset" name="SubtitleTimingOffset" type="text" is="emby-input" placeholder="+500ms, -1.2s, +00:01.250" />
-                        </div>
-                    </div>
-                    <button is="emby-button" type="submit" class="raised button-submit emby-button">
-                        <span>Create GIF</span>
-                    </button>
-                </form>
 
-                <div id="GifStatus" class="fieldDescription" style="margin-top: 1em;"></div>
-                <div id="GifDownload" style="margin-top: .75em;"></div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifItemId">Item ID (internal)</label>
+                        <input id="GifItemId" name="GifItemId" type="text" is="emby-input" required readonly aria-readonly="true" />
+                        <div class="fieldDescription">This value is filled automatically when you choose a result above.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifStartTime">Start Time (mm:ss or hh:mm:ss)</label>
+                        <input id="GifStartTime" name="GifStartTime" type="text" is="emby-input" value="00:00" required />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifLength">Length (seconds)</label>
+                        <input id="GifLength" name="GifLength" type="number" min="0.1" step="0.1" value="3" is="emby-input" required />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifFps">FPS (0 = plugin default)</label>
+                        <input id="GifFps" name="GifFps" type="number" min="0" step="1" value="0" is="emby-input" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifWidth">Width (0 = plugin default)</label>
+                        <input id="GifWidth" name="GifWidth" type="number" min="0" step="1" value="0" is="emby-input" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifSubtitle">Subtitle Stream</label>
+                        <select id="GifSubtitle" name="GifSubtitle" is="emby-select">
+                            <option value="">No subtitles</option>
+                        </select>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifSubtitleFontSize">Subtitle Font Size (optional)</label>
+                        <input id="GifSubtitleFontSize" name="GifSubtitleFontSize" type="number" min="1" max="256" step="1" is="emby-input" />
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifSubtitleTimingOffset">Subtitle Timing Offset (optional)</label>
+                        <input id="GifSubtitleTimingOffset" name="GifSubtitleTimingOffset" type="text" is="emby-input" placeholder="+500ms, -1.2s, +00:01.250, -01:02:03.5" pattern="^[+-]?(?:(?:\d+(?:\.\d+)?(?:ms|s))|(?:(?:\d+:)?[0-5]?\d:[0-5]?\d(?:\.\d+)?))$" />
+                    </div>
+
+                    <div style="display: flex; gap: .75em; flex-wrap: wrap; margin-top: 1em;">
+                        <button id="LoadSubtitlesButton" is="emby-button" type="button" class="raised emby-button">
+                            <span>Load Subtitles</span>
+                        </button>
+                        <button is="emby-button" type="submit" class="raised button-submit emby-button">
+                            <span>Create GIF</span>
+                        </button>
+                    </div>
+
+                    <div id="GifStatus" class="fieldDescription" style="margin-top: 1em;"></div>
+                    <div id="GifResult" style="margin-top: 1em;"></div>
+                    </fieldset>
+                </form>
             </div>
         </div>
 
@@ -94,21 +84,20 @@
             (function () {
                 'use strict';
 
-                var form = document.querySelector('#GifGeneratorForm');
-                var statusRegion = document.querySelector('#GifStatus');
-                var downloadRegion = document.querySelector('#GifDownload');
-                var signInRegion = document.querySelector('#GifSignInMessage');
-                var subtitleStatusRegion = document.querySelector('#SubtitleStatus');
+                // Canonical authenticated user route for generation UX.
+                var gifPageRoute = '#!/gif-generator';
+                var isAuthorized = false;
+                var hasInitialized = false;
+                var initPromise = null;
+                var currentGifObjectUrl = null;
+                var searchDebounceTimer = null;
+                var activeSearchRequestId = 0;
+                var latestSearchRequestId = 0;
+                var currentSearchResults = [];
+                var activeResultIndex = -1;
 
-                function getBaseUrl() {
-                    if (!window.ApiClient) {
-                        return window.location.origin;
-                    }
-
-                    var serverAddress = window.ApiClient._serverAddress ||
-                        (typeof window.ApiClient.serverAddress === 'function' ? window.ApiClient.serverAddress() : '');
-
-                    return (serverAddress || window.location.origin).replace(/\/+$/, '');
+                function normalizeApiPath(path) {
+                    return path.charAt(0) === '/' ? path.slice(1) : path;
                 }
 
                 function getAccessToken() {
@@ -124,6 +113,10 @@
                         return window.ApiClient._serverInfo.AccessToken;
                     }
 
+                    if (window.ApiClient.serverInfo && window.ApiClient.serverInfo.AccessToken) {
+                        return window.ApiClient.serverInfo.AccessToken;
+                    }
+
                     return '';
                 }
 
@@ -136,313 +129,837 @@
                         return window.ApiClient.getCurrentUserId() || '';
                     }
 
+                    if (typeof window.ApiClient.getCurrentUser === 'function') {
+                        var currentUser = window.ApiClient.getCurrentUser();
+                        if (currentUser && currentUser.Id) {
+                            return currentUser.Id;
+                        }
+                    }
+
                     if (window.ApiClient._serverInfo && window.ApiClient._serverInfo.UserId) {
                         return window.ApiClient._serverInfo.UserId;
+                    }
+
+                    if (window.ApiClient.serverInfo && window.ApiClient.serverInfo.UserId) {
+                        return window.ApiClient.serverInfo.UserId;
                     }
 
                     return '';
                 }
 
-                function renderUnauthorized(message) {
-                    signInRegion.style.display = 'block';
-                    signInRegion.textContent = message || 'You must be signed in to create GIFs.';
-                    statusRegion.textContent = 'Unauthorized (401/403). Redirecting to sign in...';
-                    form.querySelector('button[type="submit"]').disabled = true;
+                function isAuthenticated() {
+                    // Authentication source contract: Jellyfin ApiClient token + current user context.
+                    return Boolean(getAccessToken() && getCurrentUserId());
+                }
 
-                    var returnUrl = encodeURIComponent('#!/configurationpage?name=gifGeneratorPage');
-                    var loginHash = '#!/login.html?returnurl=' + returnUrl;
-                    setTimeout(function () {
-                        if (window.Dashboard && typeof window.Dashboard.navigate === 'function') {
-                            window.Dashboard.navigate(loginHash);
-                        } else {
-                            window.location.href = getBaseUrl() + '/web/index.html' + loginHash;
+                function getLoginRoute() {
+                    return '#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
+                }
+
+                function trimTrailingSlashes(value) {
+                    return (value || '').replace(/\/+$/, '');
+                }
+
+                function getBaseUrlPrefix() {
+                    var serverAddress = '';
+                    var webPathIndex;
+
+                    if (window.ApiClient) {
+                        serverAddress = window.ApiClient._serverAddress
+                            || window.ApiClient.serverAddress
+                            || (window.ApiClient._serverInfo && window.ApiClient._serverInfo.Address)
+                            || (window.ApiClient.serverInfo && window.ApiClient.serverInfo.Address)
+                            || '';
+                    }
+
+                    if (serverAddress) {
+                        return trimTrailingSlashes(serverAddress);
+                    }
+
+                    webPathIndex = window.location.pathname.indexOf('/web/');
+                    if (webPathIndex !== -1) {
+                        return trimTrailingSlashes(window.location.origin + window.location.pathname.slice(0, webPathIndex));
+                    }
+
+                    return trimTrailingSlashes(window.location.origin);
+                }
+
+                function getFullyQualifiedLoginRoute() {
+                    return getBaseUrlPrefix() + '/web/index.html#!/login.html?returnurl=' + encodeURIComponent(gifPageRoute);
+                }
+
+                function setFormEnabled(isEnabled) {
+                    var fieldset = document.querySelector('#GifFormControls');
+                    fieldset.disabled = !isEnabled;
+                    fieldset.setAttribute('aria-disabled', String(!isEnabled));
+                }
+
+                function setUnauthorizedState(message) {
+                    var authMessage = document.querySelector('#GifAuthMessage');
+
+                    isAuthorized = false;
+                    setFormEnabled(false);
+                    clearResult();
+                    authMessage.style.display = 'block';
+                    authMessage.textContent = message || 'You must be signed in to use the GIF Generator page.';
+                    setStatus('Unauthorized.', true);
+                }
+
+                function clearAuthWarning() {
+                    var authMessage = document.querySelector('#GifAuthMessage');
+                    authMessage.style.display = 'none';
+                    authMessage.textContent = '';
+                }
+
+                function sleep(ms) {
+                    return new Promise(function (resolve) {
+                        setTimeout(resolve, ms);
+                    });
+                }
+
+                function ensureClientReadyAsync() {
+                    var retryDelaysMs = [0, 200, 350, 500, 800];
+                    var attempt = 0;
+
+                    function hasTokenOrUserCapability() {
+                        if (!window.ApiClient) {
+                            return false;
                         }
-                    }, 1200);
-                }
 
-                function setStatus(text, isError) {
-                    statusRegion.style.color = isError ? 'var(--theme-danger, #ff6666)' : '';
-                    statusRegion.textContent = text;
-                }
-
-                function readOptionValue(option, camelKey, pascalKey) {
-                    if (option && option[camelKey] !== undefined && option[camelKey] !== null) {
-                        return option[camelKey];
+                        return Boolean(
+                            typeof window.ApiClient.accessToken === 'function'
+                            || typeof window.ApiClient.getCurrentUserId === 'function'
+                            || typeof window.ApiClient.getCurrentUser === 'function'
+                            || (window.ApiClient._serverInfo && (window.ApiClient._serverInfo.AccessToken || window.ApiClient._serverInfo.UserId))
+                            || (window.ApiClient.serverInfo && (window.ApiClient.serverInfo.AccessToken || window.ApiClient.serverInfo.UserId)));
                     }
 
-                    if (option && option[pascalKey] !== undefined && option[pascalKey] !== null) {
-                        return option[pascalKey];
+                    function hasUsableClient() {
+                        return Boolean(
+                            window.ApiClient
+                            && typeof window.ApiClient.getUrl === 'function'
+                            && (
+                                typeof window.ApiClient.getAuthorizationHeader === 'function'
+                                || hasTokenOrUserCapability()
+                            ));
                     }
 
-                    return null;
+                    function probe() {
+                        if (hasUsableClient()) {
+                            return Promise.resolve({ ready: true, authenticated: isAuthenticated() });
+                        }
+
+                        if (!window.ApiClient && attempt < retryDelaysMs.length - 1) {
+                            attempt += 1;
+                            return sleep(retryDelaysMs[attempt]).then(probe);
+                        }
+
+                        if (attempt < retryDelaysMs.length - 1) {
+                            attempt += 1;
+                            return sleep(retryDelaysMs[attempt]).then(probe);
+                        }
+
+                        return Promise.resolve({ ready: Boolean(window.ApiClient), authenticated: isAuthenticated() });
+                    }
+
+                    return probe();
                 }
 
-                function parsePositiveInt(selector) {
-                    var value = parseInt(document.querySelector(selector).value, 10);
-                    return Number.isNaN(value) ? 0 : value;
+                function redirectToLoginWithFallback() {
+                    var currentHref = window.location.href;
+
+                    window.location.replace(getLoginRoute());
+
+                    setTimeout(function () {
+                        if (window.location.href === currentHref || window.location.pathname.indexOf('/web/configurationpage') !== -1) {
+                            window.location.replace(getFullyQualifiedLoginRoute());
+                        }
+                    }, 250);
                 }
 
-                function parseTimecodeToSeconds(selector) {
-                    var rawValue = document.querySelector(selector).value.trim();
-                    if (!rawValue) {
+                function checkSessionAsync(options) {
+                    var retryDelaysMs = [0, 350, 700];
+                    var maxAttempts = (options && options.singleAttempt) ? 1 : retryDelaysMs.length;
+                    var attempt = 0;
+
+                    function probe() {
+                        return fetch(getApiUrl('/Users/Me'), {
+                            method: 'GET',
+                            headers: getAuthHeaders(),
+                            credentials: 'same-origin'
+                        }).then(function (response) {
+                            if (response.ok) {
+                                return { authorized: true };
+                            }
+
+                            if (response.status === 401 || response.status === 403) {
+                                if (attempt < maxAttempts - 1) {
+                                    attempt += 1;
+                                    return sleep(retryDelaysMs[attempt]).then(probe);
+                                }
+
+                                return { authorized: false, unauthorized: true };
+                            }
+
+                            if (attempt < maxAttempts - 1) {
+                                attempt += 1;
+                                return sleep(retryDelaysMs[attempt]).then(probe);
+                            }
+
+                            return { authorized: false, unauthorized: false, status: response.status };
+                        }).catch(function () {
+                            if (attempt < maxAttempts - 1) {
+                                attempt += 1;
+                                return sleep(retryDelaysMs[attempt]).then(probe);
+                            }
+
+                            return { authorized: false, unauthorized: false, status: 0 };
+                        });
+                    }
+
+                    return probe();
+                }
+
+                function getApiUrl(path) {
+                    if (window.ApiClient && typeof window.ApiClient.getUrl === 'function') {
+                        return window.ApiClient.getUrl(normalizeApiPath(path));
+                    }
+
+                    return path;
+                }
+
+                function getAuthHeaders(headers) {
+                    var merged = Object.assign({}, headers || {});
+
+                    if (window.ApiClient && typeof window.ApiClient.getAuthorizationHeader === 'function') {
+                        var authorizationHeader = window.ApiClient.getAuthorizationHeader();
+                        merged.Authorization = authorizationHeader;
+                        merged['X-Emby-Authorization'] = authorizationHeader;
+                    } else if (window.ApiClient && typeof window.ApiClient.accessToken === 'function') {
+                        merged['X-Emby-Token'] = window.ApiClient.accessToken() || '';
+                    }
+
+                    return merged;
+                }
+
+                function parseErrorMessage(response) {
+                    if (response.status === 401 || response.status === 403) {
+                        return Promise.resolve('Session expired or unauthorized — please sign in again.');
+                    }
+
+                    return response.text().then(function (text) {
+                        return text || ('Request failed (' + response.status + ')');
+                    });
+                }
+
+                function apiRequest(path, options) {
+                    var requestOptions = options || {};
+
+                    return fetch(getApiUrl(path), {
+                        method: requestOptions.method || 'GET',
+                        headers: getAuthHeaders(requestOptions.headers),
+                        body: requestOptions.body,
+                        credentials: requestOptions.credentials
+                    }).then(function (response) {
+                        if (!response.ok) {
+                            return parseErrorMessage(response).then(function (message) {
+                                throw new Error(message);
+                            });
+                        }
+
+                        return response;
+                    });
+                }
+
+                function getPageQueryParams() {
+                    var hash = window.location.hash || '';
+                    var qIndex = hash.indexOf('?');
+                    if (qIndex !== -1) {
+                        return new URLSearchParams(hash.slice(qIndex + 1));
+                    }
+
+                    return new URLSearchParams(window.location.search || '');
+                }
+
+                function parseTimecode(rawValue) {
+                    var raw = rawValue.trim();
+                    var parts;
+                    var seconds;
+                    var minutes;
+                    var hours;
+
+                    if (!raw) {
                         throw new Error('Start time is required.');
                     }
 
-                    var parts = rawValue.split(':');
+                    parts = raw.split(':');
                     if (parts.length < 2 || parts.length > 3) {
                         throw new Error('Start time must use mm:ss or hh:mm:ss format.');
                     }
 
-                    var secondsText = parts[parts.length - 1];
-                    var minutesText = parts[parts.length - 2];
-                    var hoursText = parts.length === 3 ? parts[0] : '0';
-                    var integerPattern = /^\d+$/;
-                    var decimalPattern = /^\d+(?:\.\d+)?$/;
+                    seconds = Number(parts[parts.length - 1]);
+                    minutes = Number(parts[parts.length - 2]);
+                    hours = Number(parts.length === 3 ? parts[0] : 0);
 
-                    if (!integerPattern.test(minutesText) || !integerPattern.test(hoursText) || !decimalPattern.test(secondsText)) {
-                        throw new Error('Start time can only contain non-negative numbers.');
+                    if (Number.isNaN(seconds) || Number.isNaN(minutes) || Number.isNaN(hours) || seconds >= 60 || minutes >= 60 || seconds < 0 || minutes < 0 || hours < 0) {
+                        throw new Error('Invalid start time.');
                     }
 
-                    var secondsPart = Number(secondsText);
-                    var minutesPart = Number(minutesText);
-                    var hoursPart = Number(hoursText);
-
-                    if (secondsPart >= 60 || minutesPart >= 60) {
-                        throw new Error('Start time minutes and seconds must be less than 60.');
-                    }
-
-                    return (hoursPart * 3600) + (minutesPart * 60) + secondsPart;
+                    return (hours * 3600) + (minutes * 60) + seconds;
                 }
 
-                function clearDownload() {
-                    downloadRegion.innerHTML = '';
-                }
-
-                function tryPrefillItemIdFromHash() {
-                    var hash = window.location.hash || '';
-                    var qIndex = hash.indexOf('?');
-                    if (qIndex === -1) {
-                        return;
-                    }
-
-                    var params = new URLSearchParams(hash.slice(qIndex + 1));
-                    var hashItemId = params.get('itemId') || params.get('id');
-                    if (!hashItemId) {
-                        return;
-                    }
-
-                    document.querySelector('#itemId').value = hashItemId;
-                }
-
-                function subtitleLabel(option) {
-                    var streamIndex = readOptionValue(option, 'streamIndex', 'StreamIndex');
-                    var language = readOptionValue(option, 'language', 'Language');
-                    var displayTitle = readOptionValue(option, 'displayTitle', 'DisplayTitle');
-                    var isDefault = readOptionValue(option, 'isDefault', 'IsDefault');
-                    var isForced = readOptionValue(option, 'isForced', 'IsForced');
-                    var isExternal = readOptionValue(option, 'isExternal', 'IsExternal');
-                    var isTextBased = readOptionValue(option, 'isTextBased', 'IsTextBased');
+                function subtitleLabel(stream) {
                     var parts = [];
-                    if (language) {
-                        parts.push(language);
+
+                    if (stream.language || stream.Language) {
+                        parts.push(stream.language || stream.Language);
                     }
-                    if (displayTitle) {
-                        parts.push(displayTitle);
+
+                    if (stream.displayTitle || stream.DisplayTitle) {
+                        parts.push(stream.displayTitle || stream.DisplayTitle);
                     }
-                    if (isExternal) {
-                        parts.push('External');
-                    }
-                    if (isDefault) {
+
+                    if ((stream.isDefault || stream.IsDefault) === true) {
                         parts.push('Default');
                     }
-                    if (isForced) {
+
+                    if ((stream.isForced || stream.IsForced) === true) {
                         parts.push('Forced');
                     }
-                    if (isTextBased === false) {
-                        parts.push('Unsupported (image-based)');
+
+                    return parts.length ? parts.join(' - ') : 'Subtitle stream ' + (stream.streamIndex || stream.StreamIndex);
+                }
+
+                function setStatus(text, isError) {
+                    var node = document.querySelector('#GifStatus');
+                    node.textContent = text;
+                    node.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'var(--theme-primary-color, #52b54b)';
+                }
+
+                function getItemDisplayContext(item) {
+                    var parts = [];
+                    var parentNumber = item.ParentIndexNumber ?? item.parentIndexNumber;
+                    var childNumber = item.IndexNumber ?? item.indexNumber;
+                    var seasonLabel;
+                    var episodeLabel;
+
+                    if (item.SeriesName || item.seriesName) {
+                        parts.push(item.SeriesName || item.seriesName);
                     }
-                    return parts.length ? parts.join(' - ') : ('Subtitle stream ' + streamIndex);
+
+                    if (parentNumber !== undefined && parentNumber !== null) {
+                        seasonLabel = 'S' + String(parentNumber).padStart(2, '0');
+                    }
+
+                    if (childNumber !== undefined && childNumber !== null) {
+                        episodeLabel = 'E' + String(childNumber).padStart(2, '0');
+                    }
+
+                    if (seasonLabel || episodeLabel) {
+                        parts.push((seasonLabel || 'S??') + (episodeLabel || ''));
+                    }
+
+                    return parts.join(' • ');
                 }
 
-                function resetSubtitleSelect(message) {
-                    var subtitleSelect = document.querySelector('#SubtitleStreamIndex');
-                    subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
-                    subtitleSelect.disabled = true;
-                    subtitleStatusRegion.textContent = message;
+                function getItemDisplayLabel(item) {
+                    var title = item.Name || item.name || 'Untitled';
+                    var year = item.ProductionYear || item.productionYear;
+                    var context = getItemDisplayContext(item);
+                    var parts = [title];
+
+                    if (year) {
+                        parts.push('(' + year + ')');
+                    }
+
+                    if (context) {
+                        parts.push('— ' + context);
+                    }
+
+                    return parts.join(' ');
                 }
 
-                function populateSubtitleOptions(subtitles) {
-                    var subtitleSelect = document.querySelector('#SubtitleStreamIndex');
-                    subtitleSelect.innerHTML = '<option value="">No subtitles</option>';
-                    var supportedCount = 0;
+                function setSelectedItem(item) {
+                    var itemIdInput = document.querySelector('#GifItemId');
+                    var selectedLabel = document.querySelector('#GifItemSelectedLabel');
 
-                    subtitles.forEach(function (option) {
-                        var streamIndex = readOptionValue(option, 'streamIndex', 'StreamIndex');
-                        var isTextBased = readOptionValue(option, 'isTextBased', 'IsTextBased');
-                        var streamOption = document.createElement('option');
-                        streamOption.value = streamIndex;
-                        streamOption.textContent = subtitleLabel(option);
-                        if (isTextBased === false) {
-                            streamOption.disabled = true;
-                        } else {
-                            supportedCount += 1;
+                    itemIdInput.value = item && (item.Id || item.id) ? (item.Id || item.id) : '';
+                    if (!item) {
+                        selectedLabel.textContent = 'Selected: none';
+                        return;
+                    }
+
+                    selectedLabel.textContent = 'Selected: ' + getItemDisplayLabel(item);
+                }
+
+                function setSearchResultsMessage(message, isError) {
+                    var resultsNode = document.querySelector('#GifItemSearchResults');
+                    resultsNode.innerHTML = '';
+                    resultsNode.textContent = message;
+                    resultsNode.style.color = isError ? 'var(--theme-danger, #ff6666)' : 'inherit';
+                    resultsNode.setAttribute('aria-activedescendant', '');
+                    currentSearchResults = [];
+                    activeResultIndex = -1;
+                }
+
+                function applyActiveResult() {
+                    var resultsNode = document.querySelector('#GifItemSearchResults');
+                    var nodes = resultsNode.querySelectorAll('[data-result-index]');
+
+                    nodes.forEach(function (node) {
+                        var index = Number(node.getAttribute('data-result-index'));
+                        var isActive = index === activeResultIndex;
+                        node.style.background = isActive ? 'rgba(255,255,255,.14)' : 'transparent';
+                        node.setAttribute('aria-selected', String(isActive));
+                        if (isActive) {
+                            resultsNode.setAttribute('aria-activedescendant', node.id);
                         }
-                        subtitleSelect.appendChild(streamOption);
                     });
 
-                    subtitleSelect.disabled = false;
-                    subtitleStatusRegion.textContent = 'Loaded ' + subtitles.length + ' subtitle stream(s), ' + supportedCount + ' compatible with GIF burn-in.';
+                    if (activeResultIndex < 0) {
+                        resultsNode.setAttribute('aria-activedescendant', '');
+                    }
                 }
 
-                function loadSubtitleOptions() {
-                    var itemId = document.querySelector('#itemId').value.trim();
-                    if (!itemId) {
-                        resetSubtitleSelect('Enter an item id to load subtitle streams.');
+                function chooseSearchResult(index) {
+                    var searchInput = document.querySelector('#GifItemSearch');
+                    if (index < 0 || index >= currentSearchResults.length) {
+                        return;
+                    }
+
+                    setSelectedItem(currentSearchResults[index]);
+                    searchInput.value = getItemDisplayLabel(currentSearchResults[index]);
+                    setSearchResultsMessage('Item selected. Search again to choose a different one.', false);
+                }
+
+                function renderSearchResults(items) {
+                    var resultsNode = document.querySelector('#GifItemSearchResults');
+
+                    if (!items.length) {
+                        setSearchResultsMessage('No matching video items found.', false);
+                        return;
+                    }
+
+                    resultsNode.innerHTML = '';
+                    resultsNode.style.color = 'inherit';
+                    currentSearchResults = items;
+                    activeResultIndex = 0;
+
+                    items.forEach(function (item, index) {
+                        var row = document.createElement('button');
+
+                        row.type = 'button';
+                        row.id = 'GifItemSearchResult_' + index;
+                        row.setAttribute('data-result-index', String(index));
+                        row.setAttribute('role', 'option');
+                        row.setAttribute('aria-selected', 'false');
+                        row.style.display = 'block';
+                        row.style.width = '100%';
+                        row.style.textAlign = 'left';
+                        row.style.background = 'transparent';
+                        row.style.border = 'none';
+                        row.style.color = 'inherit';
+                        row.style.padding = '.35em .2em';
+                        row.style.cursor = 'pointer';
+                        row.textContent = getItemDisplayLabel(item);
+
+                        row.addEventListener('click', function () {
+                            chooseSearchResult(index);
+                        });
+
+                        resultsNode.appendChild(row);
+                    });
+
+                    applyActiveResult();
+                }
+
+                function fetchItemById(itemId) {
+                    var userId = getCurrentUserId();
+                    if (!userId || !itemId) {
+                        return Promise.resolve(null);
+                    }
+
+                    return apiRequest('/Users/' + encodeURIComponent(userId) + '/Items/' + encodeURIComponent(itemId), {
+                        method: 'GET'
+                    }).then(function (response) {
+                        return response.json();
+                    }).catch(function () {
+                        return null;
+                    });
+                }
+
+                function searchGifItems(query) {
+                    var userId = getCurrentUserId();
+                    var requestId;
+
+                    if (!userId) {
+                        setSearchResultsMessage('Could not determine the current Jellyfin user for search.', true);
                         return Promise.resolve();
                     }
 
-                    resetSubtitleSelect('Loading subtitle streams...');
+                    if (!query) {
+                        setSearchResultsMessage('Type at least 2 characters to search video items.', false);
+                        return Promise.resolve();
+                    }
 
-                    return fetch(getBaseUrl() + '/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId), {
-                        method: 'GET',
-                        headers: {
-                            'X-Emby-Token': getAccessToken()
-                        },
-                        credentials: 'same-origin'
+                    requestId = ++activeSearchRequestId;
+                    latestSearchRequestId = requestId;
+                    setSearchResultsMessage('Loading search results…', false);
+
+                    return apiRequest('/Users/' + encodeURIComponent(userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=ProductionYear,SeriesName,ParentIndexNumber,IndexNumber,MediaType&Limit=20&SortBy=SortName', {
+                        method: 'GET'
                     }).then(function (response) {
-                        if (!response.ok) {
-                            return response.text().then(function (text) {
-                                throw new Error(text || ('Request failed with status ' + response.status));
-                            });
-                        }
                         return response.json();
-                    }).then(function (data) {
-                        var subtitles = data.subtitles || data.Subtitles || [];
-                        if (!subtitles.length) {
-                            resetSubtitleSelect('No subtitle streams found for this item.');
+                    }).then(function (payload) {
+                        var items = payload.Items || payload.items || [];
+                        var videoItems;
+
+                        if (requestId !== latestSearchRequestId) {
                             return;
                         }
-                        populateSubtitleOptions(subtitles);
+
+                        videoItems = items.filter(function (item) {
+                            var mediaType = (item.MediaType || item.mediaType || '').toLowerCase();
+                            var type = (item.Type || item.type || '').toLowerCase();
+                            return mediaType === 'video'
+                                || type === 'movie'
+                                || type === 'episode'
+                                || type === 'video'
+                                || type === 'musicvideo'
+                                || type === 'trailer';
+                        });
+
+                        renderSearchResults(videoItems);
                     }).catch(function (error) {
-                        resetSubtitleSelect('Failed to load subtitles: ' + error.message);
+                        if (requestId !== latestSearchRequestId) {
+                            return;
+                        }
+
+                        setSearchResultsMessage('Search failed: ' + error.message, true);
                     });
                 }
 
-                function renderDownload(downloadUrl) {
-                    var absoluteUrl = downloadUrl.indexOf('http') === 0 ? downloadUrl : getBaseUrl() + '/' + downloadUrl.replace(/^\/+/, '');
-                    downloadRegion.innerHTML = '';
+                function onGifItemSearchInput(event) {
+                    var query = event.target.value.trim();
 
-                    var anchor = document.createElement('a');
-                    anchor.href = absoluteUrl;
-                    anchor.textContent = 'Download GIF';
-                    anchor.target = '_blank';
-                    anchor.rel = 'noopener';
-                    downloadRegion.appendChild(anchor);
-
-                    var preview = document.createElement('img');
-                    preview.src = absoluteUrl + (absoluteUrl.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now();
-                    preview.alt = 'Generated GIF preview';
-                    downloadRegion.classList.add('gifResult');
-                    downloadRegion.appendChild(preview);
+                    clearTimeout(searchDebounceTimer);
+                    searchDebounceTimer = setTimeout(function () {
+                        searchGifItems(query.length >= 2 ? query : '');
+                    }, 300);
                 }
 
-                document.querySelector('#LoadSubtitlesBtn').addEventListener('click', function () {
-                    loadSubtitleOptions();
-                });
-
-                document.querySelector('#itemId').addEventListener('change', function () {
-                    loadSubtitleOptions();
-                });
-
-                form.addEventListener('submit', function (event) {
-                    event.preventDefault();
-                    clearDownload();
-                    setStatus('Creating GIF...', false);
-
-                    var token = getAccessToken();
-                    var userId = getCurrentUserId();
-                    if (!token || !userId) {
-                        renderUnauthorized('You are not signed in. Please sign in and try again.');
+                function onGifItemSearchKeydown(event) {
+                    if (!currentSearchResults.length) {
                         return;
                     }
 
+                    if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        activeResultIndex = Math.min(activeResultIndex + 1, currentSearchResults.length - 1);
+                        applyActiveResult();
+                    } else if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        activeResultIndex = Math.max(activeResultIndex - 1, 0);
+                        applyActiveResult();
+                    } else if (event.key === 'Enter') {
+                        event.preventDefault();
+                        if (activeResultIndex >= 0) {
+                            chooseSearchResult(activeResultIndex);
+                        }
+                    }
+                }
+
+                function revokeCurrentGifObjectUrl() {
+                    if (!currentGifObjectUrl) {
+                        return;
+                    }
+
+                    URL.revokeObjectURL(currentGifObjectUrl);
+                    currentGifObjectUrl = null;
+                }
+
+                function clearResult() {
+                    var result = document.querySelector('#GifResult');
+
+                    revokeCurrentGifObjectUrl();
+                    result.innerHTML = '';
+                }
+
+                function fetchGifBlob(fileName) {
+                    return apiRequest('/Plugins/GifGenerator/Download/' + encodeURIComponent(fileName), {
+                        method: 'GET'
+                    }).then(function (response) {
+                        return response.blob();
+                    });
+                }
+
+                function setResult(fileName) {
+                    var anchor = document.createElement('a');
+                    var image = document.createElement('img');
+                    var result = document.querySelector('#GifResult');
+
+                    return fetchGifBlob(fileName).then(function (blob) {
+                        var objectUrl = URL.createObjectURL(blob);
+
+                        clearResult();
+                        currentGifObjectUrl = objectUrl;
+
+                        anchor.href = objectUrl;
+                        anchor.download = fileName;
+                        anchor.textContent = 'Download ' + fileName;
+
+                        image.alt = 'Generated GIF preview';
+                        image.src = objectUrl;
+                        image.style.display = 'block';
+                        image.style.marginTop = '.5em';
+                        image.style.maxWidth = '100%';
+
+                        result.appendChild(anchor);
+                        result.appendChild(image);
+                    });
+                }
+
+                function populateSubtitleSelect(subtitles) {
+                    var select = document.querySelector('#GifSubtitle');
+
+                    select.innerHTML = '<option value="">No subtitles</option>';
+
+                    subtitles.forEach(function (stream) {
+                        var option = document.createElement('option');
+                        var index = stream.streamIndex ?? stream.StreamIndex;
+                        var textBased = stream.isTextBased ?? stream.IsTextBased;
+
+                        option.value = index;
+                        option.textContent = subtitleLabel(stream);
+
+                        if (textBased === false) {
+                            option.disabled = true;
+                        }
+
+                        select.appendChild(option);
+                    });
+                }
+
+                function fetchSubtitles(itemId) {
+                    return apiRequest('/Plugins/GifGenerator/Subtitles/' + encodeURIComponent(itemId), {
+                        method: 'GET'
+                    }).then(function (response) {
+                        return response.json();
+                    }).then(function (payload) {
+                        return payload.subtitles || payload.Subtitles || [];
+                    });
+                }
+
+                function loadSubtitles() {
+                    if (!isAuthorized) {
+                        setUnauthorizedState('You must be signed in to load subtitles.');
+                        return;
+                    }
+
+                    var itemId = document.querySelector('#GifItemId').value.trim();
+
+                    if (!itemId) {
+                        setStatus('Enter an item id before loading subtitles.', true);
+                        return;
+                    }
+
+                    setStatus('Loading subtitles...', false);
+                    populateSubtitleSelect([]);
+
+                    fetchSubtitles(itemId).then(function (subtitles) {
+                        populateSubtitleSelect(subtitles);
+                        setStatus('Subtitles loaded.', false);
+                    }).catch(function (error) {
+                        setStatus('Could not load subtitles: ' + error.message, true);
+                    });
+                }
+
+                function submitCreate(event) {
+                    if (!isAuthorized) {
+                        event.preventDefault();
+                        setUnauthorizedState('You must be signed in to generate GIFs.');
+                        return false;
+                    }
+
+                    var itemId;
                     var startSeconds;
-                    try {
-                        startSeconds = parseTimecodeToSeconds('#StartTimecode');
-                    } catch (error) {
-                        setStatus('Failed to create GIF: ' + error.message, true);
-                        return;
+                    var payload;
+                    var subtitleValue;
+                    var subtitleFontSizeValue;
+                    var subtitleFontSize;
+                    var subtitleTimingOffset;
+
+                    event.preventDefault();
+
+                    itemId = document.querySelector('#GifItemId').value.trim();
+                    if (!itemId) {
+                        setStatus('Item id is required.', true);
+                        return false;
                     }
 
-                    var payload = {
-                        itemId: document.querySelector('#itemId').value.trim(),
+                    try {
+                        startSeconds = parseTimecode(document.querySelector('#GifStartTime').value);
+                    } catch (error) {
+                        setStatus(error.message, true);
+                        return false;
+                    }
+
+                    payload = {
+                        itemId: itemId,
                         startSeconds: startSeconds,
-                        lengthSeconds: Number(document.querySelector('#lengthSeconds').value)
+                        lengthSeconds: Number(document.querySelector('#GifLength').value),
+                        fps: Number(document.querySelector('#GifFps').value) || 0,
+                        width: Number(document.querySelector('#GifWidth').value) || 0
                     };
 
-                    var widthValue = parsePositiveInt('#width');
-                    var fpsValue = parsePositiveInt('#fps');
-                    if (widthValue > 0) {
-                        payload.width = widthValue;
-                    }
-                    if (fpsValue > 0) {
-                        payload.fps = fpsValue;
+                    subtitleValue = document.querySelector('#GifSubtitle').value;
+                    if (subtitleValue !== '') {
+                        payload.subtitleStreamIndex = Number(subtitleValue);
                     }
 
-                    var selectedSubtitle = document.querySelector('#SubtitleStreamIndex').value;
-                    if (selectedSubtitle !== '') {
-                        payload.subtitleStreamIndex = parseInt(selectedSubtitle, 10);
-                    }
+                    subtitleFontSizeValue = document.querySelector('#GifSubtitleFontSize').value.trim();
+                    if (subtitleFontSizeValue !== '') {
+                        subtitleFontSize = Number(subtitleFontSizeValue);
+                        if (!Number.isInteger(subtitleFontSize) || subtitleFontSize < 1 || subtitleFontSize > 256) {
+                            setStatus('Subtitle font size must be a whole number between 1 and 256.', true);
+                            return false;
+                        }
 
-                    var subtitleFontSize = parsePositiveInt('#SubtitleFontSize');
-                    if (subtitleFontSize > 0) {
                         payload.subtitleFontSize = subtitleFontSize;
                     }
 
-                    var subtitleTimingOffset = document.querySelector('#SubtitleTimingOffset').value.trim();
-                    if (subtitleTimingOffset) {
+                    subtitleTimingOffset = document.querySelector('#GifSubtitleTimingOffset').value.trim();
+                    if (subtitleTimingOffset !== '') {
                         payload.subtitleTimingOffset = subtitleTimingOffset;
                     }
 
-                    fetch(getBaseUrl() + '/Plugins/GifGenerator/Create', {
+                    clearResult();
+                    setStatus('Generating GIF...', false);
+
+                    apiRequest('/Plugins/GifGenerator/Create', {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Token': token
+                            'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(payload),
-                        credentials: 'same-origin'
+                        body: JSON.stringify(payload)
                     }).then(function (response) {
-                        if (response.status === 401 || response.status === 403) {
-                            renderUnauthorized('Your session is no longer authorized. Please sign in again.');
-                            return null;
-                        }
-
-                        if (!response.ok) {
-                            return response.text().then(function (bodyText) {
-                                throw new Error(bodyText || ('Request failed (' + response.status + ')'));
-                            });
-                        }
-
                         return response.json();
-                    }).then(function (result) {
-                        if (!result) {
+                    }).then(function (data) {
+                        var fileName = data.fileName || data.FileName;
+
+                        if (!fileName) {
+                            throw new Error('Create endpoint did not return a file name.');
+                        }
+
+                        return setResult(fileName);
+                    }).then(function () {
+                        setStatus('GIF generated.', false);
+                    }).catch(function (error) {
+                        setStatus('Failed: ' + error.message, true);
+                    });
+
+                    return false;
+                }
+
+                async function onPageShow() {
+                    var params;
+                    var itemId;
+                    var clientState;
+                    var sessionState;
+
+                    if (hasInitialized) {
+                        return;
+                    }
+
+                    if (initPromise) {
+                        return initPromise;
+                    }
+
+                    initPromise = (async function () {
+                        setStatus('Checking session...', false);
+                        setFormEnabled(false);
+                        clearAuthWarning();
+
+                        clientState = await ensureClientReadyAsync();
+
+                        if (!clientState.ready) {
+                            setStatus('Jellyfin client is still loading. Verifying session...', false);
+                            sessionState = await checkSessionAsync({ singleAttempt: true });
+
+                            if (!sessionState.authorized) {
+                                if (sessionState.unauthorized) {
+                                    setUnauthorizedState('You are not signed in. Redirecting to the Jellyfin login page...');
+                                    redirectToLoginWithFallback();
+                                    return;
+                                }
+
+                                setStatus('Jellyfin client is still loading. Please open this page again in a moment.', false);
+                                return;
+                            }
+                        } else {
+                            sessionState = await checkSessionAsync();
+                        }
+
+                        if (!sessionState.authorized) {
+                            if (sessionState.unauthorized) {
+                                setUnauthorizedState('You are not signed in. Redirecting to the Jellyfin login page...');
+                                redirectToLoginWithFallback();
+                                return;
+                            }
+
+                            setFormEnabled(false);
+                            setStatus('Could not verify session. Please try again.', true);
                             return;
                         }
 
-                        if (!result.downloadUrl) {
-                            throw new Error('GIF created, but no download URL was returned.');
+                        isAuthorized = true;
+                        hasInitialized = true;
+                        setFormEnabled(true);
+                        clearAuthWarning();
+
+                        params = getPageQueryParams();
+                        itemId = (params.get('itemId') || params.get('id') || '').trim();
+
+                        setStatus('Ready.', false);
+                        document.querySelector('#GifResult').innerHTML = '';
+                        populateSubtitleSelect([]);
+
+                        if (itemId) {
+                            setSelectedItem({ Id: itemId, Name: itemId });
+                            fetchItemById(itemId).then(function (item) {
+                                if (item && (item.Id || item.id) === itemId) {
+                                    setSelectedItem(item);
+                                }
+                            });
+                        } else {
+                            setSelectedItem(null);
                         }
 
-                        setStatus('GIF created successfully.', false);
-                        renderDownload(result.downloadUrl);
-                    }).catch(function (error) {
-                        setStatus('Failed to create GIF: ' + (error && error.message ? error.message : String(error)), true);
-                    });
-                });
+                        setSearchResultsMessage('Type at least 2 characters to search video items.', false);
+                    })();
 
-                tryPrefillItemIdFromHash();
-                loadSubtitleOptions();
+                    try {
+                        await initPromise;
+                    } finally {
+                        if (!hasInitialized) {
+                            initPromise = null;
+                        }
+                    }
+                }
+
+                var pageElement = document.querySelector('#GifGeneratorPage');
+                pageElement.addEventListener('pageshow', onPageShow);
+                pageElement.addEventListener('viewshow', onPageShow);
+
+                setFormEnabled(false);
+                setStatus('Waiting for Jellyfin client...', false);
+
+                document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);
+                document.querySelector('#GifGeneratorCreateForm').addEventListener('submit', submitCreate);
+                document.querySelector('#GifItemSearch').addEventListener('input', onGifItemSearchInput);
+                document.querySelector('#GifItemSearch').addEventListener('keydown', onGifItemSearchKeydown);
+                document.querySelector('#GifItemSearchResults').addEventListener('keydown', onGifItemSearchKeydown);
+                onPageShow();
             })();
         </script>
     </div>

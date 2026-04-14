@@ -1,0 +1,2 @@
+[INF] DemoChannel.GetChannelItems invoked for user 00000000-0000-0000-0000-000000000000, folder <root>.
+[INF] DemoChannel.GetChannelItemMediaInfo invoked for item id poc-item-no-playback.
