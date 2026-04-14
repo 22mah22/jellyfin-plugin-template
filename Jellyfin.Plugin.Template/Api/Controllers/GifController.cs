@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -458,12 +459,22 @@ public class GifController : ControllerBase
                 return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' is external but does not expose a file path.", null, null);
             }
 
+            var resolvedExternalPath = ResolveExternalSubtitlePath(item.Path, selectedSubtitle.Path);
+            if (resolvedExternalPath is null)
+            {
+                return new SubtitleSelection(
+                    false,
+                    $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' points to missing subtitle file '{selectedSubtitle.Path}'. Re-scan metadata or pick another subtitle stream.",
+                    null,
+                    null);
+            }
+
             if (!IsTextSubtitleStream(selectedSubtitle))
             {
                 return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' uses a non-text subtitle format that ffmpeg cannot burn into GIFs. Choose a text subtitle stream (SRT/ASS/WebVTT) or generate without subtitles.", null, null);
             }
 
-            return new SubtitleSelection(true, null, null, selectedSubtitle.Path);
+            return new SubtitleSelection(true, null, null, resolvedExternalPath);
         }
 
         if (!IsTextSubtitleStream(selectedSubtitle))
@@ -496,6 +507,64 @@ public class GifController : ControllerBase
             .Replace("]", "\\]", StringComparison.Ordinal)
             .Replace(";", "\\;", StringComparison.Ordinal);
         return escaped;
+    }
+
+    [SuppressMessage(
+        "Security",
+        "CA3003:Review code for file path injection vulnerabilities",
+        Justification = "subtitlePath/itemPath come from Jellyfin library metadata (MediaStream.Path/BaseItem.Path), not direct user input, and the resolved file is only used for ffmpeg subtitle burn-in.")]
+    private static string? ResolveExternalSubtitlePath(string? itemPath, string subtitlePath)
+    {
+        if (string.IsNullOrWhiteSpace(subtitlePath))
+        {
+            return null;
+        }
+
+        if (System.IO.File.Exists(subtitlePath))
+        {
+            return subtitlePath;
+        }
+
+        if (string.IsNullOrWhiteSpace(itemPath))
+        {
+            return null;
+        }
+
+        var itemDirectory = Path.GetDirectoryName(itemPath);
+        if (string.IsNullOrWhiteSpace(itemDirectory) || !Directory.Exists(itemDirectory))
+        {
+            return null;
+        }
+
+        if (!Path.IsPathRooted(subtitlePath))
+        {
+            var relativeCandidate = Path.GetFullPath(Path.Combine(itemDirectory, subtitlePath));
+            if (System.IO.File.Exists(relativeCandidate))
+            {
+                return relativeCandidate;
+            }
+        }
+
+        var subtitleFileName = Path.GetFileName(subtitlePath);
+        if (string.IsNullOrWhiteSpace(subtitleFileName))
+        {
+            return null;
+        }
+
+        var sameDirectoryCandidate = Path.Combine(itemDirectory, subtitleFileName);
+        if (System.IO.File.Exists(sameDirectoryCandidate))
+        {
+            return sameDirectoryCandidate;
+        }
+
+        var extension = Path.GetExtension(subtitleFileName);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return null;
+        }
+
+        var filesWithSameExtension = Directory.EnumerateFiles(itemDirectory, "*" + extension, SearchOption.TopDirectoryOnly);
+        return filesWithSameExtension.FirstOrDefault(file => string.Equals(Path.GetFileName(file), subtitleFileName, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsTextSubtitleStream(MediaStream stream)
