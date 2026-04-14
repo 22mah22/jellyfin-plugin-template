@@ -159,38 +159,44 @@ public class GifController : ControllerBase
 
         var fps = request.Fps > 0 ? request.Fps : plugin.Configuration.DefaultFps;
         var width = request.Width > 0 ? request.Width : plugin.Configuration.DefaultWidth;
+        var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
 
-        var processInfo = BuildProcessStartInfo(
-            ffmpegPath,
-            request.StartSeconds,
-            request.LengthSeconds,
-            item.Path,
-            fps,
-            width,
-            outputPath,
-            subtitleSelection,
-            request.SubtitleFontSize,
-            subtitleOffsetResult.Seconds);
-
-        using var process = new Process { StartInfo = processInfo };
-        try
+        if (!hasSubtitleBurnIn)
         {
-            process.Start();
+            // Keep the existing direct execution path for subtitle-free GIF generation.
+            var processInfo = BuildDirectGifCmd(
+                ffmpegPath,
+                request.StartSeconds,
+                request.LengthSeconds,
+                item.Path,
+                fps,
+                width,
+                outputPath);
+
+            var directRunResult = await RunFfmpegAsync(processInfo, cancellationToken).ConfigureAwait(false);
+            if (!directRunResult.IsSuccess)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, directRunResult.ErrorMessage);
+            }
         }
-        catch (Win32Exception)
+        else
         {
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                $"Unable to start ffmpeg at '{ffmpegPath}'. Configure Jellyfin's encoder path to use Jellyfin's ffmpeg binary.");
-        }
-
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        var stderr = await stderrTask.ConfigureAwait(false);
-
-        if (process.ExitCode != 0)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, $"ffmpeg failed with exit code {process.ExitCode}. {stderr}");
+            var twoStepResult = await RunSubtitleTwoStepPipelineAsync(
+                ffmpegPath,
+                request.StartSeconds,
+                request.LengthSeconds,
+                item.Path,
+                fps,
+                width,
+                outputPath,
+                subtitleSelection,
+                request.SubtitleFontSize,
+                subtitleOffsetResult.Seconds,
+                cancellationToken).ConfigureAwait(false);
+            if (!twoStepResult.IsSuccess)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, twoStepResult.ErrorMessage);
+            }
         }
 
         return Ok(new CreateGifResponse
@@ -280,21 +286,18 @@ public class GifController : ControllerBase
         return PhysicalFile(matchingGifPath, "image/gif", enableRangeProcessing: true);
     }
 
-    private static ProcessStartInfo BuildProcessStartInfo(
+    private static ProcessStartInfo BuildDirectGifCmd(
         string ffmpegPath,
         double startSeconds,
         double lengthSeconds,
         string inputPath,
         int fps,
         int width,
-        string outputPath,
-        SubtitleSelection subtitleSelection,
-        int? subtitleFontSize,
-        double subtitleOffsetSeconds)
+        string outputPath)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds);
+        var videoFilter = BuildGifScaleAndFpsFilter(fps, width);
 
         var processInfo = new ProcessStartInfo
         {
@@ -308,23 +311,11 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add("-hide_banner");
         processInfo.ArgumentList.Add("-loglevel");
         processInfo.ArgumentList.Add("error");
-        var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
-        if (!hasSubtitleBurnIn)
-        {
-            // Fast seek before input dramatically improves performance for large offsets.
-            processInfo.ArgumentList.Add("-ss");
-            processInfo.ArgumentList.Add(start);
-            processInfo.ArgumentList.Add("-i");
-            processInfo.ArgumentList.Add(inputPath);
-        }
-        else
-        {
-            // Subtitle burn-in always uses accurate seek placement to preserve subtitle timing.
-            processInfo.ArgumentList.Add("-i");
-            processInfo.ArgumentList.Add(inputPath);
-            processInfo.ArgumentList.Add("-ss");
-            processInfo.ArgumentList.Add(start);
-        }
+        // Fast seek before input dramatically improves performance for large offsets.
+        processInfo.ArgumentList.Add("-ss");
+        processInfo.ArgumentList.Add(start);
+        processInfo.ArgumentList.Add("-i");
+        processInfo.ArgumentList.Add(inputPath);
 
         processInfo.ArgumentList.Add("-t");
         processInfo.ArgumentList.Add(length);
@@ -335,6 +326,157 @@ public class GifController : ControllerBase
 
         return processInfo;
     }
+
+    private async Task<FfmpegRunResult> RunSubtitleTwoStepPipelineAsync(
+        string ffmpegPath,
+        double startSeconds,
+        double lengthSeconds,
+        string inputPath,
+        int fps,
+        int width,
+        string outputPath,
+        SubtitleSelection subtitleSelection,
+        int? subtitleFontSize,
+        double subtitleOffsetSeconds,
+        CancellationToken cancellationToken)
+    {
+        var tempDirectory = Path.Combine(
+            _serverApplicationPaths.DataPath,
+            "plugins",
+            "gif-generator",
+            "temp",
+            Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+
+        Directory.CreateDirectory(tempDirectory);
+        var intermediatePath = Path.Combine(tempDirectory, "stage-a.mkv");
+
+        try
+        {
+            var stageAInfo = BuildStageACmd(
+                ffmpegPath,
+                startSeconds,
+                lengthSeconds,
+                inputPath,
+                intermediatePath,
+                subtitleSelection);
+            var stageAResult = await RunFfmpegAsync(stageAInfo, cancellationToken).ConfigureAwait(false);
+            if (!stageAResult.IsSuccess)
+            {
+                return new FfmpegRunResult(false, "Stage A failed while preparing subtitle source segment. " + stageAResult.ErrorMessage);
+            }
+
+            var stageBInfo = BuildStageBCmd(
+                ffmpegPath,
+                intermediatePath,
+                fps,
+                width,
+                outputPath,
+                subtitleSelection,
+                subtitleFontSize,
+                subtitleOffsetSeconds);
+            var stageBResult = await RunFfmpegAsync(stageBInfo, cancellationToken).ConfigureAwait(false);
+            if (!stageBResult.IsSuccess)
+            {
+                return new FfmpegRunResult(false, "Stage B failed while rendering subtitle GIF output. " + stageBResult.ErrorMessage);
+            }
+
+            return new FfmpegRunResult(true, null);
+        }
+        finally
+        {
+            TryDeleteDirectory(tempDirectory);
+        }
+    }
+
+    private static ProcessStartInfo BuildStageACmd(
+        string ffmpegPath,
+        double startSeconds,
+        double lengthSeconds,
+        string inputPath,
+        string intermediatePath,
+        SubtitleSelection subtitleSelection)
+    {
+        var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+        var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+
+        var processInfo = new ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        processInfo.ArgumentList.Add("-hide_banner");
+        processInfo.ArgumentList.Add("-loglevel");
+        processInfo.ArgumentList.Add("error");
+        processInfo.ArgumentList.Add("-i");
+        processInfo.ArgumentList.Add(inputPath);
+        // Accurate seek on subtitle path keeps subtitle timing aligned for burn-in.
+        processInfo.ArgumentList.Add("-ss");
+        processInfo.ArgumentList.Add(start);
+        processInfo.ArgumentList.Add("-t");
+        processInfo.ArgumentList.Add(length);
+        processInfo.ArgumentList.Add("-map");
+        processInfo.ArgumentList.Add("0:v:0");
+        if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue)
+        {
+            processInfo.ArgumentList.Add("-map");
+            processInfo.ArgumentList.Add("0:s?");
+        }
+        processInfo.ArgumentList.Add("-an");
+        processInfo.ArgumentList.Add("-c:v");
+        processInfo.ArgumentList.Add("libx264");
+        processInfo.ArgumentList.Add("-preset");
+        processInfo.ArgumentList.Add("veryfast");
+        processInfo.ArgumentList.Add("-crf");
+        processInfo.ArgumentList.Add("18");
+        if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue)
+        {
+            processInfo.ArgumentList.Add("-c:s");
+            processInfo.ArgumentList.Add("copy");
+        }
+        processInfo.ArgumentList.Add("-y");
+        processInfo.ArgumentList.Add(intermediatePath);
+
+        return processInfo;
+    }
+
+    private static ProcessStartInfo BuildStageBCmd(
+        string ffmpegPath,
+        string intermediatePath,
+        int fps,
+        int width,
+        string outputPath,
+        SubtitleSelection subtitleSelection,
+        int? subtitleFontSize,
+        double subtitleOffsetSeconds)
+    {
+        var processInfo = new ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        processInfo.ArgumentList.Add("-hide_banner");
+        processInfo.ArgumentList.Add("-loglevel");
+        processInfo.ArgumentList.Add("error");
+        processInfo.ArgumentList.Add("-i");
+        processInfo.ArgumentList.Add(intermediatePath);
+        processInfo.ArgumentList.Add("-vf");
+        processInfo.ArgumentList.Add(BuildVideoFilter(fps, width, intermediatePath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds));
+        processInfo.ArgumentList.Add("-y");
+        processInfo.ArgumentList.Add(outputPath);
+
+        return processInfo;
+    }
+
+    private static string BuildGifScaleAndFpsFilter(int fps, int width)
+        => string.Create(CultureInfo.InvariantCulture, $"fps={fps},scale={width}:-1:flags=lanczos");
 
     private static string BuildVideoFilter(
         int fps,
@@ -856,6 +998,55 @@ public class GifController : ControllerBase
         bool IsValid,
         string? ErrorMessage,
         double Seconds);
+
+    private static async Task<FfmpegRunResult> RunFfmpegAsync(ProcessStartInfo processInfo, CancellationToken cancellationToken)
+    {
+        using var process = new Process { StartInfo = processInfo };
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception)
+        {
+            return new FfmpegRunResult(
+                false,
+                $"Unable to start ffmpeg at '{processInfo.FileName}'. Configure Jellyfin's encoder path to use Jellyfin's ffmpeg binary.");
+        }
+
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        var stderr = await stderrTask.ConfigureAwait(false);
+
+        if (process.ExitCode != 0)
+        {
+            return new FfmpegRunResult(false, $"ffmpeg failed with exit code {process.ExitCode}. {stderr}");
+        }
+
+        return new FfmpegRunResult(true, null);
+    }
+
+    private void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException ex)
+        {
+            _logger.LogDebug(ex, "Failed to delete temporary gif pipeline directory '{Path}'.", path);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogDebug(ex, "Failed to delete temporary gif pipeline directory '{Path}'.", path);
+        }
+    }
+
+    private sealed record FfmpegRunResult(
+        bool IsSuccess,
+        string? ErrorMessage);
 
     private sealed record SubtitleSelection(
         bool IsValid,
