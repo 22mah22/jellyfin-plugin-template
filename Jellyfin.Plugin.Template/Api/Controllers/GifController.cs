@@ -425,6 +425,7 @@ public class GifController : ControllerBase
             processInfo.ArgumentList.Add("-map");
             processInfo.ArgumentList.Add("0:s?");
         }
+
         processInfo.ArgumentList.Add("-an");
         processInfo.ArgumentList.Add("-c:v");
         processInfo.ArgumentList.Add("libx264");
@@ -437,6 +438,7 @@ public class GifController : ControllerBase
             processInfo.ArgumentList.Add("-c:s");
             processInfo.ArgumentList.Add("copy");
         }
+
         processInfo.ArgumentList.Add("-y");
         processInfo.ArgumentList.Add(intermediatePath);
 
@@ -994,11 +996,6 @@ public class GifController : ControllerBase
         }
     }
 
-    private sealed record SubtitleOffsetParseResult(
-        bool IsValid,
-        string? ErrorMessage,
-        double Seconds);
-
     private static async Task<FfmpegRunResult> RunFfmpegAsync(ProcessStartInfo processInfo, CancellationToken cancellationToken)
     {
         using var process = new Process { StartInfo = processInfo };
@@ -1047,6 +1044,11 @@ public class GifController : ControllerBase
     private sealed record FfmpegRunResult(
         bool IsSuccess,
         string? ErrorMessage);
+
+    private sealed record SubtitleOffsetParseResult(
+        bool IsValid,
+        string? ErrorMessage,
+        double Seconds);
 
     private sealed record SubtitleSelection(
         bool IsValid,
