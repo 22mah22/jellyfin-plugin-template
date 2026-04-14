@@ -107,16 +107,25 @@ Generated GIF files are cleaned up automatically when plugin endpoints are used:
 Daily GIF creation is exposed as a dedicated **GIF Generator** user page in the main menu.
 Use the dedicated in-app route:
 
-`#!/configurationpage?name=gifGeneratorPage`
+`#!/gif-generator`
 
 If a user opens this route without a valid Jellyfin session token/current user context, the page immediately redirects to Jellyfin login and returns to the same route after sign-in.
 
+If item-level actions are needed in the future, they can be reintroduced in a separate, explicitly versioned enhancement pass.
+
 ## User Access Contract
 
-- **Canonical UI path:** the authenticated user generation experience is `#!/configurationpage?name=gifGeneratorPage`.
+- **Canonical UI path:** the authenticated user generation experience is `#!/gif-generator`.
 - **Authentication source:** UI access and API calls use Jellyfin session context from `ApiClient` (session token + current user).
 - **API contract:** plugin API endpoints remain protected with `[Authorize]`; no anonymous plugin endpoints are exposed.
 - **Separation of concerns:** `Configuration/configPage.html` is for admin-managed defaults only, while GIF generation is user-facing via the canonical route.
+- **Optional enhancements:** item-detail actions or similar entry points are optional helpers, must be non-blocking, and must never replace `#!/gif-generator` as canonical.
+
+### Future UI Addition Checklist
+
+- Must tolerate missing/renamed DOM hooks without breaking core generation flow.
+- Must not rely on aggressive mutation polling loops to function.
+- Must degrade gracefully (feature absent is acceptable; user route and API remain functional).
 
 ## Installing via a custom plugin repository
 
@@ -151,3 +160,33 @@ This repo now includes the **📦 Build Repository Package** GitHub Actions work
    - Create a GitHub release and upload `jellyfin-plugin-gif-generator.zip`.
 
 After that, Jellyfin clients using the manifest URL above can install/update from the repository.
+
+## IChannel POC (non-functional)
+
+This plugin includes a minimal Jellyfin channel proof-of-concept named **Plugin Demo Channel**.
+
+- The channel exposes one static item: **POC Item (No Playback)**.
+- The channel item is intentionally non-functional (no real stream URL, no transcoding, no library writes, no background jobs).
+- Temporary informational logs are emitted when channel query and media-info callback methods are invoked.
+
+### Registration and behavior
+
+- `ServiceRegistrator` registers `DemoChannel` as an `IChannel` service at startup.
+- `DemoChannel.GetChannelItems(...)` returns a single static media item.
+- `DemoChannel.GetChannelItemMediaInfo(...)` returns a deterministic placeholder media source using `plugin-demo://not-implemented`.
+
+### Validation checklist (local Jellyfin instance)
+
+1. Install and load this plugin in Jellyfin.
+2. Login as a standard non-admin user.
+3. Navigate to Channels and confirm **Plugin Demo Channel** is visible.
+4. Open **POC Item (No Playback)** and confirm the placeholder/non-functional outcome (no crash).
+5. Confirm server logs contain the channel invocation lines.
+
+### Proof artifact: log snippet
+
+A sample log snippet is captured at `docs/ichannel-poc-log-snippet.txt`.
+
+### Proof artifact: screenshot
+
+A runtime screenshot must be captured from a live Jellyfin instance during manual validation. This repository change set does not include a generated screenshot because no Jellyfin server/web-client runtime is available in this execution environment.
