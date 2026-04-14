@@ -5,7 +5,7 @@
     <title>Gif Generator</title>
 </head>
 <body>
-    <div id="GifGeneratorConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
+    <div id="GifGeneratorConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
         <div data-role="content">
             <div class="content-primary">
                 <form id="GifGeneratorConfigForm">
@@ -37,7 +37,7 @@
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="SubtitleSeekMode">Subtitle Seek Mode</label>
                         <select id="SubtitleSeekMode" name="SubtitleSeekMode" is="emby-select">
-                            <option value="3">Auto (accurate for short seeks, hybrid for long seeks)</option>
+                            <option value="3">Auto (currently same as Accurate for burn-in reliability)</option>
                             <option value="0">Accurate (recommended subtitle sync)</option>
                             <option value="1">Fast (better speed, slight subtitle timing risk)</option>
                             <option value="2">Hybrid (coarse + fine seek balance)</option>
@@ -47,7 +47,7 @@
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="SubtitleSeekPreRollSeconds">Subtitle Hybrid Pre-roll (seconds)</label>
                         <input id="SubtitleSeekPreRollSeconds" name="SubtitleSeekPreRollSeconds" type="number" is="emby-input" min="0" max="120" step="0.1" required />
-                        <div class="fieldDescription">Used in Hybrid mode (and Auto mode when start time is long). ffmpeg seeks near target first, then applies a fine seek after input.</div>
+                        <div class="fieldDescription">Used in Hybrid mode. Auto currently maps to Accurate mode while subtitle burn-in compatibility work is in progress.</div>
                     </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
