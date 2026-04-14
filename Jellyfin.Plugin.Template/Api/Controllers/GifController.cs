@@ -357,24 +357,19 @@ public class GifController : ControllerBase
 
         if (hasSubtitleBurnIn)
         {
-            builder.Append("subtitles='");
+            builder.Append("subtitles=filename=");
             var subtitleInputPath = subtitleSelection.ExternalSubtitlePath ?? inputPath;
             builder.Append(EscapeFilterValue(subtitleInputPath));
             if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue)
             {
-                builder.Append("':si=");
+                builder.Append(":si=");
                 builder.Append(subtitleSelection.FfmpegSubtitleOrdinal.Value.ToString(CultureInfo.InvariantCulture));
-            }
-            else
-            {
-                builder.Append('\'');
             }
 
             if (subtitleFontSize.HasValue)
             {
-                builder.Append(":force_style='");
+                builder.Append(":force_style=");
                 builder.Append(EscapeFilterValue("Fontsize=" + subtitleFontSize.Value.ToString(CultureInfo.InvariantCulture)));
-                builder.Append('\'');
             }
 
             builder.Append(',');
