@@ -82,11 +82,6 @@ public class GifController : ControllerBase
     private readonly IApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
 
-    private readonly record struct SubtitleTimingModel(
-        double SegmentStartSeconds,
-        double RelativeClipStartSeconds,
-        double EffectiveSubtitleOffsetSeconds);
-
     /// <summary>
     /// Initializes a new instance of the <see cref="GifController"/> class.
     /// </summary>
@@ -1053,6 +1048,11 @@ public class GifController : ControllerBase
             _logger.LogDebug(ex, "Failed to delete temporary gif pipeline directory '{Path}'.", path);
         }
     }
+
+    private readonly record struct SubtitleTimingModel(
+        double SegmentStartSeconds,
+        double RelativeClipStartSeconds,
+        double EffectiveSubtitleOffsetSeconds);
 
     private sealed record FfmpegRunResult(
         bool IsSuccess,
