@@ -165,6 +165,16 @@ public class PluginPagesDemoController : ControllerBase
                                             </select>
                                         </div>
 
+                                        <div class="inputContainer">
+                                            <label for="GifSubtitleFontSize">Subtitle Font Size (optional)</label>
+                                            <input id="GifSubtitleFontSize" type="number" min="1" max="256" step="1">
+                                        </div>
+
+                                        <div class="inputContainer">
+                                            <label for="GifSubtitleTimingOffset">Subtitle Timing Offset (optional)</label>
+                                            <input id="GifSubtitleTimingOffset" type="text" placeholder="+500ms, -1.2s, +00:01.250, -01:02:03.5" pattern="^[+-]?(?:(?:\d+(?:\.\d+)?(?:ms|s))|(?:(?:\d+:)?[0-5]?\d:[0-5]?\d(?:\.\d+)?))$">
+                                        </div>
+
                                         <div class="row">
                                             <button id="LoadSubtitlesButton" type="button">Load Subtitles</button>
                                             <button type="submit">Create GIF</button>
@@ -478,6 +488,9 @@ public class PluginPagesDemoController : ControllerBase
                                             var payload;
                                             var subtitleValue;
                                             var startSeconds;
+                                            var subtitleFontSizeValue;
+                                            var subtitleFontSize;
+                                            var subtitleTimingOffset;
 
                                             e.preventDefault();
                                             try {
@@ -511,6 +524,22 @@ public class PluginPagesDemoController : ControllerBase
                                             subtitleValue = document.getElementById('GifSubtitle').value;
                                             if (subtitleValue !== '') {
                                                 payload.subtitleStreamIndex = Number(subtitleValue);
+                                            }
+
+                                            subtitleFontSizeValue = document.getElementById('GifSubtitleFontSize').value.trim();
+                                            if (subtitleFontSizeValue !== '') {
+                                                subtitleFontSize = Number(subtitleFontSizeValue);
+                                                if (!Number.isInteger(subtitleFontSize) || subtitleFontSize < 1 || subtitleFontSize > 256) {
+                                                    setStatus('Subtitle font size must be a whole number between 1 and 256.', true);
+                                                    return false;
+                                                }
+
+                                                payload.subtitleFontSize = subtitleFontSize;
+                                            }
+
+                                            subtitleTimingOffset = document.getElementById('GifSubtitleTimingOffset').value.trim();
+                                            if (subtitleTimingOffset !== '') {
+                                                payload.subtitleTimingOffset = subtitleTimingOffset;
                                             }
 
                                             clearResult();
