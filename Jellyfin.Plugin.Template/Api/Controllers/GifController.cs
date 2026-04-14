@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -34,7 +33,6 @@ public class GifController : ControllerBase
     private const int MinimumGifRetentionHours = 1;
     private const int MaximumGifRetentionHours = 8760;
     private const int MaxGeneratedGifCount = 500;
-    private const double MaximumSubtitleSeekPreRollSeconds = 120;
 
     private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
@@ -173,9 +171,7 @@ public class GifController : ControllerBase
             outputPath,
             subtitleSelection,
             request.SubtitleFontSize,
-            subtitleOffsetResult.Seconds,
-            plugin.Configuration.SubtitleSeekMode,
-            plugin.Configuration.SubtitleSeekPreRollSeconds);
+            subtitleOffsetResult.Seconds);
 
         using var process = new Process { StartInfo = processInfo };
         try
@@ -295,15 +291,11 @@ public class GifController : ControllerBase
         string outputPath,
         SubtitleSelection subtitleSelection,
         int? subtitleFontSize,
-        double subtitleOffsetSeconds,
-        SubtitleSeekMode subtitleSeekMode,
-        double subtitleSeekPreRollSeconds)
+        double subtitleOffsetSeconds)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds);
-        var normalizedSeekMode = Enum.IsDefined(subtitleSeekMode) ? subtitleSeekMode : SubtitleSeekMode.Auto;
-        var preRollSeconds = Math.Clamp(subtitleSeekPreRollSeconds, 0, MaximumSubtitleSeekPreRollSeconds);
 
         var processInfo = new ProcessStartInfo
         {
@@ -328,8 +320,11 @@ public class GifController : ControllerBase
         }
         else
         {
-            var effectiveSeekMode = ResolveSubtitleSeekMode(normalizedSeekMode, startSeconds);
-            AddSubtitleSeekArguments(processInfo.ArgumentList, inputPath, startSeconds, effectiveSeekMode, preRollSeconds);
+            // Keep seek after input so subtitle timestamps stay aligned for burn-in.
+            processInfo.ArgumentList.Add("-i");
+            processInfo.ArgumentList.Add(inputPath);
+            processInfo.ArgumentList.Add("-ss");
+            processInfo.ArgumentList.Add(start);
         }
 
         processInfo.ArgumentList.Add("-t");
@@ -340,61 +335,6 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add(outputPath);
 
         return processInfo;
-    }
-
-    private static void AddSubtitleSeekArguments(
-        Collection<string> argumentList,
-        string inputPath,
-        double startSeconds,
-        SubtitleSeekMode subtitleSeekMode,
-        double preRollSeconds)
-    {
-        var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        switch (subtitleSeekMode)
-        {
-            case SubtitleSeekMode.Fast:
-                // Fast mode keeps seek before input even with subtitles. This is quicker but can cause slight subtitle timing drift.
-                argumentList.Add("-ss");
-                argumentList.Add(start);
-                argumentList.Add("-i");
-                argumentList.Add(inputPath);
-                break;
-            case SubtitleSeekMode.Hybrid:
-            {
-                var coarseSeekSeconds = Math.Max(0, startSeconds - preRollSeconds);
-                var fineSeekSeconds = Math.Max(0, startSeconds - coarseSeekSeconds);
-
-                argumentList.Add("-ss");
-                argumentList.Add(coarseSeekSeconds.ToString("0.###", CultureInfo.InvariantCulture));
-                argumentList.Add("-i");
-                argumentList.Add(inputPath);
-                argumentList.Add("-ss");
-                argumentList.Add(fineSeekSeconds.ToString("0.###", CultureInfo.InvariantCulture));
-                break;
-            }
-
-            case SubtitleSeekMode.Accurate:
-            default:
-                // Accurate mode keeps seek after input so subtitle timestamps stay aligned for burn-in.
-                argumentList.Add("-i");
-                argumentList.Add(inputPath);
-                argumentList.Add("-ss");
-                argumentList.Add(start);
-                break;
-        }
-    }
-
-    private static SubtitleSeekMode ResolveSubtitleSeekMode(SubtitleSeekMode configuredSeekMode, double startSeconds)
-    {
-        if (configuredSeekMode != SubtitleSeekMode.Auto)
-        {
-            return configuredSeekMode;
-        }
-
-        // Auto currently prefers accurate seek for subtitle burn-in reliability.
-        // Hybrid/fast pre-input seeks can cause ffmpeg subtitles filter to miss cues entirely on many sources.
-        _ = startSeconds;
-        return SubtitleSeekMode.Accurate;
     }
 
     private static string BuildVideoFilter(
