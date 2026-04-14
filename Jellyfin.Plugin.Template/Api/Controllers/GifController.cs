@@ -30,6 +30,7 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 [Route("Plugins/GifGenerator")]
 public class GifController : ControllerBase
 {
+    private const double AutoSeekModeHybridThresholdSeconds = 30;
     private const double MaxSubtitleOffsetSeconds = 30;
     private const int MinimumGifRetentionHours = 1;
     private const int MaximumGifRetentionHours = 8760;
@@ -302,7 +303,7 @@ public class GifController : ControllerBase
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds);
-        var normalizedSeekMode = Enum.IsDefined(subtitleSeekMode) ? subtitleSeekMode : SubtitleSeekMode.Accurate;
+        var normalizedSeekMode = Enum.IsDefined(subtitleSeekMode) ? subtitleSeekMode : SubtitleSeekMode.Auto;
         var preRollSeconds = Math.Clamp(subtitleSeekPreRollSeconds, 0, MaximumSubtitleSeekPreRollSeconds);
 
         var processInfo = new ProcessStartInfo
@@ -328,7 +329,8 @@ public class GifController : ControllerBase
         }
         else
         {
-            AddSubtitleSeekArguments(processInfo.ArgumentList, inputPath, startSeconds, normalizedSeekMode, preRollSeconds);
+            var effectiveSeekMode = ResolveSubtitleSeekMode(normalizedSeekMode, startSeconds);
+            AddSubtitleSeekArguments(processInfo.ArgumentList, inputPath, startSeconds, effectiveSeekMode, preRollSeconds);
         }
 
         processInfo.ArgumentList.Add("-t");
@@ -381,6 +383,18 @@ public class GifController : ControllerBase
                 argumentList.Add(start);
                 break;
         }
+    }
+
+    private static SubtitleSeekMode ResolveSubtitleSeekMode(SubtitleSeekMode configuredSeekMode, double startSeconds)
+    {
+        if (configuredSeekMode != SubtitleSeekMode.Auto)
+        {
+            return configuredSeekMode;
+        }
+
+        return startSeconds < AutoSeekModeHybridThresholdSeconds
+            ? SubtitleSeekMode.Accurate
+            : SubtitleSeekMode.Hybrid;
     }
 
     private static string BuildVideoFilter(
