@@ -7,8 +7,6 @@ namespace Jellyfin.Plugin.Template.Configuration;
 /// </summary>
 public class PluginConfiguration : BasePluginConfiguration
 {
-    private SubtitleSeekMode _subtitleSeekMode = SubtitleSeekMode.Accurate;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="PluginConfiguration"/> class.
     /// </summary>
@@ -18,7 +16,6 @@ public class PluginConfiguration : BasePluginConfiguration
         DefaultFps = 12;
         DefaultWidth = 480;
         GifRetentionHours = 168;
-        SubtitleSeekMode = SubtitleSeekMode.Accurate;
     }
 
     /// <summary>
@@ -40,20 +37,4 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the number of hours generated gifs are retained before cleanup.
     /// </summary>
     public int GifRetentionHours { get; set; }
-
-    /// <summary>
-    /// Gets or sets subtitle seek strategy used when subtitle burn-in is enabled.
-    /// </summary>
-    public SubtitleSeekMode SubtitleSeekMode
-    {
-        get => _subtitleSeekMode;
-        set => _subtitleSeekMode = NormalizeSubtitleSeekMode(value);
-    }
-
-    private static SubtitleSeekMode NormalizeSubtitleSeekMode(SubtitleSeekMode seekMode)
-        => seekMode switch
-        {
-            SubtitleSeekMode.Accurate => SubtitleSeekMode.Accurate,
-            _ => SubtitleSeekMode.Accurate
-        };
 }
