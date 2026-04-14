@@ -29,6 +29,7 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 public class GifController : ControllerBase
 {
     private const double MaxSubtitleOffsetSeconds = 30;
+    private const double SystemSubtitleTimingCompensationSeconds = 0;
     private const int MinimumGifRetentionHours = 1;
     private const int MaximumGifRetentionHours = 8760;
     private const int MaxGeneratedGifCount = 500;
@@ -80,6 +81,11 @@ public class GifController : ControllerBase
     private readonly ILogger<GifController> _logger;
     private readonly IApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
+
+    private readonly record struct SubtitleTimingModel(
+        double SegmentStartSeconds,
+        double RelativeClipStartSeconds,
+        double EffectiveSubtitleOffsetSeconds);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GifController"/> class.
@@ -181,9 +187,10 @@ public class GifController : ControllerBase
         }
         else
         {
+            var subtitleTimingModel = BuildSubtitleTimingModel(request.StartSeconds, subtitleOffsetResult.Seconds);
             var twoStepResult = await RunSubtitleTwoStepPipelineAsync(
                 ffmpegPath,
-                request.StartSeconds,
+                subtitleTimingModel,
                 request.LengthSeconds,
                 item.Path,
                 fps,
@@ -191,7 +198,6 @@ public class GifController : ControllerBase
                 outputPath,
                 subtitleSelection,
                 request.SubtitleFontSize,
-                subtitleOffsetResult.Seconds,
                 cancellationToken).ConfigureAwait(false);
             if (!twoStepResult.IsSuccess)
             {
@@ -329,7 +335,7 @@ public class GifController : ControllerBase
 
     private async Task<FfmpegRunResult> RunSubtitleTwoStepPipelineAsync(
         string ffmpegPath,
-        double startSeconds,
+        SubtitleTimingModel subtitleTimingModel,
         double lengthSeconds,
         string inputPath,
         int fps,
@@ -337,7 +343,6 @@ public class GifController : ControllerBase
         string outputPath,
         SubtitleSelection subtitleSelection,
         int? subtitleFontSize,
-        double subtitleOffsetSeconds,
         CancellationToken cancellationToken)
     {
         var tempDirectory = Path.Combine(
@@ -354,7 +359,7 @@ public class GifController : ControllerBase
         {
             var stageAInfo = BuildStageACmd(
                 ffmpegPath,
-                startSeconds,
+                subtitleTimingModel.SegmentStartSeconds,
                 lengthSeconds,
                 inputPath,
                 intermediatePath,
@@ -373,7 +378,7 @@ public class GifController : ControllerBase
                 outputPath,
                 subtitleSelection,
                 subtitleFontSize,
-                subtitleOffsetSeconds);
+                subtitleTimingModel.EffectiveSubtitleOffsetSeconds);
             var stageBResult = await RunFfmpegAsync(stageBInfo, cancellationToken).ConfigureAwait(false);
             if (!stageBResult.IsSuccess)
             {
@@ -486,17 +491,17 @@ public class GifController : ControllerBase
         string inputPath,
         SubtitleSelection subtitleSelection,
         int? subtitleFontSize,
-        double subtitleOffsetSeconds)
+        double effectiveSubtitleOffsetSeconds)
     {
         var builder = new StringBuilder();
         var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
-        var hasSubtitleOffset = Math.Abs(subtitleOffsetSeconds) > 0;
+        var hasSubtitleOffset = Math.Abs(effectiveSubtitleOffsetSeconds) > 0;
         if (hasSubtitleOffset && hasSubtitleBurnIn)
         {
             // Shift only subtitle evaluation timing, then restore original timestamps so GIF frame selection remains anchored to StartSeconds.
             // Positive subtitle offset means subtitles appear later, so subtitle evaluation should see earlier timestamps.
             builder.Append("setpts=");
-            builder.Append(BuildPtsOffsetExpression(subtitleOffsetSeconds, reverse: false));
+            builder.Append(BuildPtsOffsetExpression(effectiveSubtitleOffsetSeconds, reverse: false));
             builder.Append(',');
         }
 
@@ -524,7 +529,7 @@ public class GifController : ControllerBase
         {
             // Restore timestamps after subtitle burn-in so the GIF visual clip start remains unchanged.
             builder.Append("setpts=");
-            builder.Append(BuildPtsOffsetExpression(subtitleOffsetSeconds, reverse: true));
+            builder.Append(BuildPtsOffsetExpression(effectiveSubtitleOffsetSeconds, reverse: true));
             builder.Append(',');
         }
 
@@ -534,6 +539,14 @@ public class GifController : ControllerBase
         builder.Append(width.ToString(CultureInfo.InvariantCulture));
         builder.Append(":-1:flags=lanczos");
         return builder.ToString();
+    }
+
+    private static SubtitleTimingModel BuildSubtitleTimingModel(double startSeconds, double userSubtitleOffsetSeconds)
+    {
+        var segmentStartSeconds = startSeconds;
+        var relativeClipStartSeconds = startSeconds - segmentStartSeconds;
+        var effectiveSubtitleOffsetSeconds = SystemSubtitleTimingCompensationSeconds + userSubtitleOffsetSeconds;
+        return new SubtitleTimingModel(segmentStartSeconds, relativeClipStartSeconds, effectiveSubtitleOffsetSeconds);
     }
 
     private static string BuildPtsOffsetExpression(double subtitleOffsetSeconds, bool reverse)
