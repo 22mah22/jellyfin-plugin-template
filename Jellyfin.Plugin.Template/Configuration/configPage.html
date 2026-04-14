@@ -42,6 +42,13 @@
             <div class="content-primary">
                 <form id="GifGeneratorConfigForm">
                     <h2>Plugin Defaults</h2>
+                    <div class="fieldDescription">This page is for admin defaults only. Daily GIF creation is available from the dedicated user page in the main menu.</div>
+                    <div class="fieldDescription">The dedicated main-menu GIF Generator page is the canonical user flow.</div>
+                    <div class="inputContainer">
+                        <a is="emby-button" class="raised button-submit block emby-button" href="#!/configurationpage?name=gifGeneratorPage">
+                            <span>Open GIF Generator</span>
+                        </a>
+                    </div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="MaxGifLengthSeconds">Maximum GIF Length (seconds)</label>
                         <input id="MaxGifLengthSeconds" name="MaxGifLengthSeconds" type="number" is="emby-input" min="1" max="120" required />
@@ -55,6 +62,11 @@
                             <label class="inputLabel inputLabelUnfocused" for="DefaultWidth">Default Width</label>
                             <input id="DefaultWidth" name="DefaultWidth" type="number" is="emby-input" min="64" max="4096" required />
                         </div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="GifRetentionHours">GIF Retention (hours)</label>
+                        <input id="GifRetentionHours" name="GifRetentionHours" type="number" is="emby-input" min="1" max="8760" required />
+                        <div class="fieldDescription">Generated GIF files older than this retention window are deleted during normal API usage.</div>
                     </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
@@ -137,9 +149,22 @@
         </div>
 
         <script type="text/javascript">
+            // Admin-only defaults surface. User-facing generation remains on #!/configurationpage?name=gifGeneratorPage.
             var GifGeneratorConfig = {
                 pluginUniqueId: 'eb5d7894-8eef-4b36-aa6f-5d124e828ce1'
             };
+
+            function readOptionValue(option, camelKey, pascalKey) {
+                if (option && option[camelKey] !== undefined && option[camelKey] !== null) {
+                    return option[camelKey];
+                }
+
+                if (option && option[pascalKey] !== undefined && option[pascalKey] !== null) {
+                    return option[pascalKey];
+                }
+
+                return null;
+            }
 
             function parsePositiveInt(selector) {
                 var value = parseInt(document.querySelector(selector).value, 10);
@@ -209,13 +234,13 @@
             }
 
             function subtitleLabel(option) {
-                var streamIndex = option.streamIndex ?? option.StreamIndex;
-                var language = option.language ?? option.Language;
-                var displayTitle = option.displayTitle ?? option.DisplayTitle;
-                var isDefault = option.isDefault ?? option.IsDefault;
-                var isForced = option.isForced ?? option.IsForced;
-                var isExternal = option.isExternal ?? option.IsExternal;
-                var isTextBased = option.isTextBased ?? option.IsTextBased;
+                var streamIndex = readOptionValue(option, 'streamIndex', 'StreamIndex');
+                var language = readOptionValue(option, 'language', 'Language');
+                var displayTitle = readOptionValue(option, 'displayTitle', 'DisplayTitle');
+                var isDefault = readOptionValue(option, 'isDefault', 'IsDefault');
+                var isForced = readOptionValue(option, 'isForced', 'IsForced');
+                var isExternal = readOptionValue(option, 'isExternal', 'IsExternal');
+                var isTextBased = readOptionValue(option, 'isTextBased', 'IsTextBased');
                 var parts = [];
                 if (language) {
                     parts.push(language);
@@ -257,8 +282,8 @@
                 var supportedCount = 0;
 
                 subtitles.forEach(function(option) {
-                    var streamIndex = option.streamIndex ?? option.StreamIndex;
-                    var isTextBased = option.isTextBased ?? option.IsTextBased;
+                    var streamIndex = readOptionValue(option, 'streamIndex', 'StreamIndex');
+                    var isTextBased = readOptionValue(option, 'isTextBased', 'IsTextBased');
                     var streamOption = document.createElement('option');
                     streamOption.value = streamIndex;
                     streamOption.textContent = subtitleLabel(option);
@@ -322,6 +347,10 @@
                 return path + (token ? (separator + 'api_key=' + encodeURIComponent(token)) : '');
             }
 
+            function clamp(value, min, max) {
+                return Math.min(max, Math.max(min, value));
+            }
+
             document.querySelector('#GifGeneratorConfigPage')
                 .addEventListener('pageshow', function() {
                     Dashboard.showLoadingMsg();
@@ -329,6 +358,7 @@
                         document.querySelector('#MaxGifLengthSeconds').value = config.MaxGifLengthSeconds;
                         document.querySelector('#DefaultFps').value = config.DefaultFps;
                         document.querySelector('#DefaultWidth').value = config.DefaultWidth;
+                        document.querySelector('#GifRetentionHours').value = config.GifRetentionHours || 168;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -352,6 +382,7 @@
                         config.MaxGifLengthSeconds = parsePositiveInt('#MaxGifLengthSeconds');
                         config.DefaultFps = parsePositiveInt('#DefaultFps');
                         config.DefaultWidth = parsePositiveInt('#DefaultWidth');
+                        config.GifRetentionHours = clamp(parsePositiveInt('#GifRetentionHours'), 1, 8760);
                         ApiClient.updatePluginConfiguration(GifGeneratorConfig.pluginUniqueId, config).then(function(result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });
