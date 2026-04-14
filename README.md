@@ -106,6 +106,7 @@ Subtitle seek modes apply only when subtitles are burned in:
 - `Accurate` (default): `-ss` after input for strongest subtitle timing alignment.
 - `Fast`: `-ss` before input for faster startup. This can introduce slight subtitle timing drift on some sources.
 - `Hybrid`: coarse `-ss` before input (`start - preRoll`), then fine `-ss` after input for a middle ground.
+- `Auto`: currently resolves to `Accurate` for subtitle burn-in reliability.
 
 `SubtitleSeekPreRollSeconds` (default `2`) is clamped to `0..120`.
 

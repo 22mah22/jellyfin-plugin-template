@@ -30,7 +30,6 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 [Route("Plugins/GifGenerator")]
 public class GifController : ControllerBase
 {
-    private const double AutoSeekModeHybridThresholdSeconds = 30;
     private const double MaxSubtitleOffsetSeconds = 30;
     private const int MinimumGifRetentionHours = 1;
     private const int MaximumGifRetentionHours = 8760;
@@ -392,9 +391,10 @@ public class GifController : ControllerBase
             return configuredSeekMode;
         }
 
-        return startSeconds < AutoSeekModeHybridThresholdSeconds
-            ? SubtitleSeekMode.Accurate
-            : SubtitleSeekMode.Hybrid;
+        // Auto currently prefers accurate seek for subtitle burn-in reliability.
+        // Hybrid/fast pre-input seeks can cause ffmpeg subtitles filter to miss cues entirely on many sources.
+        _ = startSeconds;
+        return SubtitleSeekMode.Accurate;
     }
 
     private static string BuildVideoFilter(
