@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -508,6 +509,10 @@ public class GifController : ControllerBase
         return escaped;
     }
 
+    [SuppressMessage(
+        "Security",
+        "CA3003:Review code for file path injection vulnerabilities",
+        Justification = "subtitlePath/itemPath come from Jellyfin library metadata (MediaStream.Path/BaseItem.Path), not direct user input, and the resolved file is only used for ffmpeg subtitle burn-in.")]
     private static string? ResolveExternalSubtitlePath(string? itemPath, string subtitlePath)
     {
         if (string.IsNullOrWhiteSpace(subtitlePath))
