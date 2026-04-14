@@ -16,7 +16,7 @@ public class PluginConfiguration : BasePluginConfiguration
         DefaultFps = 12;
         DefaultWidth = 480;
         GifRetentionHours = 168;
-        SubtitleSeekMode = SubtitleSeekMode.Accurate;
+        SubtitleSeekMode = SubtitleSeekMode.Auto;
         SubtitleSeekPreRollSeconds = 2;
     }
 
