@@ -34,6 +34,20 @@
                         <input id="GifRetentionHours" name="GifRetentionHours" type="number" is="emby-input" min="1" max="8760" required />
                         <div class="fieldDescription">Generated GIF files older than this retention window are deleted during normal API usage.</div>
                     </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="SubtitleSeekMode">Subtitle Seek Mode</label>
+                        <select id="SubtitleSeekMode" name="SubtitleSeekMode" is="emby-select">
+                            <option value="0">Accurate (recommended subtitle sync)</option>
+                            <option value="1">Fast (better speed, slight subtitle timing risk)</option>
+                            <option value="2">Hybrid (coarse + fine seek balance)</option>
+                        </select>
+                        <div class="fieldDescription">Controls ffmpeg seek placement when subtitle burn-in is enabled.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="SubtitleSeekPreRollSeconds">Subtitle Hybrid Pre-roll (seconds)</label>
+                        <input id="SubtitleSeekPreRollSeconds" name="SubtitleSeekPreRollSeconds" type="number" is="emby-input" min="0" max="120" step="0.1" required />
+                        <div class="fieldDescription">Used only in Hybrid mode. ffmpeg seeks near target first, then applies a fine seek after input.</div>
+                    </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save Settings</span>
@@ -58,6 +72,11 @@
                 return Math.min(max, Math.max(min, value));
             }
 
+            function parseNumber(selector, fallback) {
+                var value = parseFloat(document.querySelector(selector).value);
+                return Number.isNaN(value) ? fallback : value;
+            }
+
             document.querySelector('#GifGeneratorConfigPage')
                 .addEventListener('pageshow', function() {
                     Dashboard.showLoadingMsg();
@@ -66,6 +85,8 @@
                         document.querySelector('#DefaultFps').value = config.DefaultFps;
                         document.querySelector('#DefaultWidth').value = config.DefaultWidth;
                         document.querySelector('#GifRetentionHours').value = config.GifRetentionHours || 168;
+                        document.querySelector('#SubtitleSeekMode').value = String(config.SubtitleSeekMode || 0);
+                        document.querySelector('#SubtitleSeekPreRollSeconds').value = config.SubtitleSeekPreRollSeconds || 2;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -80,6 +101,8 @@
                         config.DefaultFps = parsePositiveInt('#DefaultFps');
                         config.DefaultWidth = parsePositiveInt('#DefaultWidth');
                         config.GifRetentionHours = clamp(parsePositiveInt('#GifRetentionHours'), 1, 8760);
+                        config.SubtitleSeekMode = clamp(parsePositiveInt('#SubtitleSeekMode'), 0, 2);
+                        config.SubtitleSeekPreRollSeconds = clamp(parseNumber('#SubtitleSeekPreRollSeconds', 2), 0, 120);
                         ApiClient.updatePluginConfiguration(GifGeneratorConfig.pluginUniqueId, config).then(function(result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });
