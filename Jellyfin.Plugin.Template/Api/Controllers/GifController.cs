@@ -521,7 +521,11 @@ public class GifController : ControllerBase
                         subtitleClipResult.IsRecoverableFailure);
                 }
 
-                clippedSubtitlePath = subtitleClipResult.PreparedSubtitlePath;
+                if (subtitleClipResult.IsTemporaryPreparedSubtitleFile)
+                {
+                    clippedSubtitlePath = subtitleClipResult.PreparedSubtitlePath;
+                }
+
                 stageBSubtitleSelection = stageBSubtitleSelection with { ExternalSubtitlePath = subtitleClipResult.PreparedSubtitlePath };
                 _logger.LogInformation(
                     "GIF pipeline stageB using prepared external subtitle file for item {ItemId}. sourceSubtitlePath={SourceSubtitlePath} preparedSubtitlePath={PreparedSubtitlePath} keptCueCount={KeptCueCount} windowStart={SegmentStartSeconds}s windowLength={LengthSeconds}s.",
@@ -590,7 +594,12 @@ public class GifController : ControllerBase
             TryDeleteFile(intermediatePath);
             if (!string.IsNullOrWhiteSpace(clippedSubtitlePath))
             {
-                TryDeleteFile(clippedSubtitlePath);
+                var normalizedTempDirectory = Path.GetFullPath(tempDirectory);
+                var normalizedClippedPath = Path.GetFullPath(clippedSubtitlePath);
+                if (normalizedClippedPath.StartsWith(normalizedTempDirectory, StringComparison.Ordinal))
+                {
+                    TryDeleteFile(clippedSubtitlePath);
+                }
             }
 
             if (Directory.Exists(tempDirectory))
@@ -1127,14 +1136,14 @@ public class GifController : ControllerBase
                 externalSubtitlePath,
                 segmentStartSeconds,
                 lengthSeconds);
-            return new PreparedSubtitleClipResult(true, false, null, externalSubtitlePath, null);
+            return new PreparedSubtitleClipResult(true, false, null, externalSubtitlePath, null, false);
         }
 
         _logger.LogWarning(
             "Unsupported external subtitle extension '{Extension}' for clipping; using original subtitle file for Stage B. sourceSubtitlePath={SourceSubtitlePath}.",
             extension,
             externalSubtitlePath);
-        return new PreparedSubtitleClipResult(true, false, null, externalSubtitlePath, null);
+        return new PreparedSubtitleClipResult(true, false, null, externalSubtitlePath, null, false);
     }
 
     private async Task<PreparedSubtitleClipResult> PrepareSrtSubtitleClipAsync(
@@ -1153,7 +1162,8 @@ public class GifController : ControllerBase
                     false,
                     $"External subtitle file was not found: '{externalSubtitlePath}'.",
                     null,
-                    null);
+                    null,
+                    false);
             }
 
             var outputPath = Path.Combine(tempDirectory, "subtitle-clipped.srt");
@@ -1163,23 +1173,23 @@ public class GifController : ControllerBase
                 segmentStartSeconds,
                 lengthSeconds,
                 cancellationToken).ConfigureAwait(false);
-            return new PreparedSubtitleClipResult(true, false, null, outputPath, clippingResult.KeptCueCount);
+            return new PreparedSubtitleClipResult(true, false, null, outputPath, clippingResult.KeptCueCount, true);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return new PreparedSubtitleClipResult(false, false, $"Unable to access external subtitle path '{externalSubtitlePath}': {ex.Message}", null, null);
+            return new PreparedSubtitleClipResult(false, false, $"Unable to access external subtitle path '{externalSubtitlePath}': {ex.Message}", null, null, false);
         }
         catch (DirectoryNotFoundException ex)
         {
-            return new PreparedSubtitleClipResult(false, false, $"Subtitle clipping directory path was not found while processing '{externalSubtitlePath}': {ex.Message}", null, null);
+            return new PreparedSubtitleClipResult(false, false, $"Subtitle clipping directory path was not found while processing '{externalSubtitlePath}': {ex.Message}", null, null, false);
         }
         catch (PathTooLongException ex)
         {
-            return new PreparedSubtitleClipResult(false, false, $"Subtitle clipping path is too long for '{externalSubtitlePath}': {ex.Message}", null, null);
+            return new PreparedSubtitleClipResult(false, false, $"Subtitle clipping path is too long for '{externalSubtitlePath}': {ex.Message}", null, null, false);
         }
         catch (IOException ex)
         {
-            return new PreparedSubtitleClipResult(false, false, $"I/O failure while clipping subtitle '{externalSubtitlePath}': {ex.Message}", null, null);
+            return new PreparedSubtitleClipResult(false, false, $"I/O failure while clipping subtitle '{externalSubtitlePath}': {ex.Message}", null, null, false);
         }
         catch (OperationCanceledException)
         {
@@ -1193,7 +1203,8 @@ public class GifController : ControllerBase
                 true,
                 $"Unable to clip external subtitle file '{externalSubtitlePath}' for two-step burn-in. {ex.Message}",
                 null,
-                null);
+                null,
+                false);
         }
     }
 
@@ -1717,7 +1728,8 @@ public class GifController : ControllerBase
         bool IsRecoverableFailure,
         string? ErrorMessage,
         string? PreparedSubtitlePath,
-        int? KeptCueCount);
+        int? KeptCueCount,
+        bool IsTemporaryPreparedSubtitleFile);
 
     private readonly record struct SrtClipResult(int KeptCueCount);
 }
