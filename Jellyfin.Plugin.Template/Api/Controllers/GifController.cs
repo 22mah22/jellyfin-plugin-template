@@ -489,6 +489,7 @@ public class GifController : ControllerBase
             }
 
             stageIdentifier = "stageB";
+            var stageBSubtitleSelection = RebaseSubtitleSelectionForIntermediateStage(subtitleSelection);
             var stageBStopwatch = Stopwatch.StartNew();
             var stageBInfo = BuildStageBCmd(
                 ffmpegPath,
@@ -496,7 +497,7 @@ public class GifController : ControllerBase
                 fps,
                 width,
                 outputPath,
-                subtitleSelection,
+                stageBSubtitleSelection,
                 subtitleFontSize,
                 subtitleTimingModel.EffectiveSubtitleOffsetSeconds);
             var stageBResult = await RunFfmpegAsync(stageBInfo, cancellationToken).ConfigureAwait(false);
@@ -509,8 +510,8 @@ public class GifController : ControllerBase
                 requestStartSeconds,
                 lengthSeconds,
                 requestedSubtitleStreamIndex,
-                subtitleSelection.JellyfinSubtitleStreamIndex,
-                subtitleSelection.FfmpegSubtitleOrdinal);
+                stageBSubtitleSelection.JellyfinSubtitleStreamIndex,
+                stageBSubtitleSelection.FfmpegSubtitleOrdinal);
             if (!stageBResult.IsSuccess)
             {
                 _logger.LogWarning(
@@ -518,8 +519,8 @@ public class GifController : ControllerBase
                     stageIdentifier,
                     itemId,
                     stageBResult.ErrorMessage,
-                    subtitleSelection.JellyfinSubtitleStreamIndex,
-                    subtitleSelection.FfmpegSubtitleOrdinal);
+                    stageBSubtitleSelection.JellyfinSubtitleStreamIndex,
+                    stageBSubtitleSelection.FfmpegSubtitleOrdinal);
                 return new SubtitlePipelineRunResult(false, $"GIF pipeline failed at {stageIdentifier}: {stageBResult.ErrorMessage}", false);
             }
 
@@ -787,6 +788,16 @@ public class GifController : ControllerBase
 
     private static string BuildGifScaleAndFpsFilter(int fps, int width)
         => string.Create(CultureInfo.InvariantCulture, $"fps={fps},scale={width}:-1:flags=lanczos");
+
+    private static SubtitleSelection RebaseSubtitleSelectionForIntermediateStage(SubtitleSelection subtitleSelection)
+    {
+        if (!subtitleSelection.FfmpegSubtitleOrdinal.HasValue || subtitleSelection.FfmpegSubtitleOrdinal.Value == 0)
+        {
+            return subtitleSelection;
+        }
+
+        return subtitleSelection with { FfmpegSubtitleOrdinal = 0 };
+    }
 
     private static string BuildVideoFilter(
         int fps,
