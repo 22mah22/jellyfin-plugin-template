@@ -1146,6 +1146,10 @@ public class GifController : ControllerBase
         return new PreparedSubtitleClipResult(true, false, null, externalSubtitlePath, null, false);
     }
 
+    [SuppressMessage(
+        "Security",
+        "CA3003:Review code for file path injection vulnerabilities",
+        Justification = "externalSubtitlePath is resolved from Jellyfin MediaStream metadata via ResolveSubtitleSelection/ResolveExternalSubtitlePath and not accepted directly from request input.")]
     private async Task<PreparedSubtitleClipResult> PrepareSrtSubtitleClipAsync(
         string externalSubtitlePath,
         double segmentStartSeconds,
@@ -1731,5 +1735,5 @@ public class GifController : ControllerBase
         int? KeptCueCount,
         bool IsTemporaryPreparedSubtitleFile);
 
-    private readonly record struct SrtClipResult(int KeptCueCount);
+    private sealed record SrtClipResult(int KeptCueCount);
 }
