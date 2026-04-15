@@ -802,7 +802,6 @@
                 }
 
                 function onRandomGifClick() {
-                    var form = document.querySelector('#GifGeneratorCreateForm');
                     var lengthInput = document.querySelector('#GifLength');
                     var startInput = document.querySelector('#GifStartTime');
                     var itemId = document.querySelector('#GifItemId').value.trim();
@@ -826,7 +825,9 @@
 
                     startInput.value = formatTimestamp(randomStartSeconds);
                     lengthInput.value = '3';
-                    form.requestSubmit();
+                    submitCreate({
+                        preventDefault: function () { }
+                    });
                 }
 
                 function submitCreate(event) {
