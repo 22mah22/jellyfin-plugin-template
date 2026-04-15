@@ -42,6 +42,11 @@ public class GifController : ControllerBase
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
         TimeSpan.FromMilliseconds(100));
 
+    private static readonly Regex SrtTimingLinePattern = new(
+        @"^\s*(?<start>\d{2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(?<end>\d{2}:\d{2}:\d{2}[,.]\d{1,3})(?<settings>.*)$",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
     {
         "ass",
@@ -440,6 +445,7 @@ public class GifController : ControllerBase
     {
         var pipelineStopwatch = Stopwatch.StartNew();
         var stageIdentifier = "stageA";
+        string? clippedSubtitlePath = null;
         var tempDirectory = Path.Combine(
             _serverApplicationPaths.DataPath,
             "plugins",
@@ -490,6 +496,43 @@ public class GifController : ControllerBase
 
             stageIdentifier = "stageB";
             var stageBSubtitleSelection = RebaseSubtitleSelectionForIntermediateStage(subtitleSelection);
+            var isExternalSubtitleFlow = !string.IsNullOrWhiteSpace(subtitleSelection.ExternalSubtitlePath) && !subtitleSelection.FfmpegSubtitleOrdinal.HasValue;
+            if (isExternalSubtitleFlow)
+            {
+                var subtitleClipResult = await PrepareTemporaryExternalSubtitleClipAsync(
+                    subtitleSelection.ExternalSubtitlePath!,
+                    subtitleTimingModel.SegmentStartSeconds,
+                    lengthSeconds,
+                    tempDirectory,
+                    cancellationToken).ConfigureAwait(false);
+                if (!subtitleClipResult.IsSuccess)
+                {
+                    _logger.LogWarning(
+                        "GIF pipeline stageB subtitle clipping failed for item {ItemId}. recoverable={Recoverable} sourceSubtitlePath={SourceSubtitlePath} windowStart={SegmentStartSeconds}s windowLength={LengthSeconds}s error={ErrorMessage}",
+                        itemId,
+                        subtitleClipResult.IsRecoverableFailure,
+                        subtitleSelection.ExternalSubtitlePath,
+                        subtitleTimingModel.SegmentStartSeconds,
+                        lengthSeconds,
+                        subtitleClipResult.ErrorMessage);
+                    return new SubtitlePipelineRunResult(
+                        false,
+                        $"GIF pipeline failed at stageB subtitle clipping: {subtitleClipResult.ErrorMessage}",
+                        subtitleClipResult.IsRecoverableFailure);
+                }
+
+                clippedSubtitlePath = subtitleClipResult.PreparedSubtitlePath;
+                stageBSubtitleSelection = stageBSubtitleSelection with { ExternalSubtitlePath = subtitleClipResult.PreparedSubtitlePath };
+                _logger.LogInformation(
+                    "GIF pipeline stageB using prepared external subtitle file for item {ItemId}. sourceSubtitlePath={SourceSubtitlePath} preparedSubtitlePath={PreparedSubtitlePath} keptCueCount={KeptCueCount} windowStart={SegmentStartSeconds}s windowLength={LengthSeconds}s.",
+                    itemId,
+                    subtitleSelection.ExternalSubtitlePath,
+                    subtitleClipResult.PreparedSubtitlePath,
+                    subtitleClipResult.KeptCueCount,
+                    subtitleTimingModel.SegmentStartSeconds,
+                    lengthSeconds);
+            }
+
             var stageBStopwatch = Stopwatch.StartNew();
             var stageBInfo = BuildStageBCmd(
                 ffmpegPath,
@@ -545,6 +588,10 @@ public class GifController : ControllerBase
         finally
         {
             TryDeleteFile(intermediatePath);
+            if (!string.IsNullOrWhiteSpace(clippedSubtitlePath))
+            {
+                TryDeleteFile(clippedSubtitlePath);
+            }
 
             if (Directory.Exists(tempDirectory))
             {
@@ -1054,6 +1101,225 @@ public class GifController : ControllerBase
         return false;
     }
 
+    private async Task<PreparedSubtitleClipResult> PrepareTemporaryExternalSubtitleClipAsync(
+        string externalSubtitlePath,
+        double segmentStartSeconds,
+        double lengthSeconds,
+        string tempDirectory,
+        CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(externalSubtitlePath);
+        if (string.Equals(extension, ".srt", StringComparison.OrdinalIgnoreCase))
+        {
+            return await PrepareSrtSubtitleClipAsync(
+                externalSubtitlePath,
+                segmentStartSeconds,
+                lengthSeconds,
+                tempDirectory,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        if (string.Equals(extension, ".ass", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".ssa", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "ASS/SSA subtitle clipping is not yet implemented; using original subtitle file for Stage B. sourceSubtitlePath={SourceSubtitlePath} windowStart={SegmentStartSeconds}s windowLength={LengthSeconds}s.",
+                externalSubtitlePath,
+                segmentStartSeconds,
+                lengthSeconds);
+            return new PreparedSubtitleClipResult(true, false, null, externalSubtitlePath, null);
+        }
+
+        _logger.LogWarning(
+            "Unsupported external subtitle extension '{Extension}' for clipping; using original subtitle file for Stage B. sourceSubtitlePath={SourceSubtitlePath}.",
+            extension,
+            externalSubtitlePath);
+        return new PreparedSubtitleClipResult(true, false, null, externalSubtitlePath, null);
+    }
+
+    private async Task<PreparedSubtitleClipResult> PrepareSrtSubtitleClipAsync(
+        string externalSubtitlePath,
+        double segmentStartSeconds,
+        double lengthSeconds,
+        string tempDirectory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!System.IO.File.Exists(externalSubtitlePath))
+            {
+                return new PreparedSubtitleClipResult(
+                    false,
+                    false,
+                    $"External subtitle file was not found: '{externalSubtitlePath}'.",
+                    null,
+                    null);
+            }
+
+            var outputPath = Path.Combine(tempDirectory, "subtitle-clipped.srt");
+            var clippingResult = await ClipSrtSubtitleWindowAsync(
+                externalSubtitlePath,
+                outputPath,
+                segmentStartSeconds,
+                lengthSeconds,
+                cancellationToken).ConfigureAwait(false);
+            return new PreparedSubtitleClipResult(true, false, null, outputPath, clippingResult.KeptCueCount);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return new PreparedSubtitleClipResult(false, false, $"Unable to access external subtitle path '{externalSubtitlePath}': {ex.Message}", null, null);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return new PreparedSubtitleClipResult(false, false, $"Subtitle clipping directory path was not found while processing '{externalSubtitlePath}': {ex.Message}", null, null);
+        }
+        catch (PathTooLongException ex)
+        {
+            return new PreparedSubtitleClipResult(false, false, $"Subtitle clipping path is too long for '{externalSubtitlePath}': {ex.Message}", null, null);
+        }
+        catch (IOException ex)
+        {
+            return new PreparedSubtitleClipResult(false, false, $"I/O failure while clipping subtitle '{externalSubtitlePath}': {ex.Message}", null, null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Recoverable subtitle clipping failure for source subtitle file '{SourceSubtitlePath}'.", externalSubtitlePath);
+            return new PreparedSubtitleClipResult(
+                false,
+                true,
+                $"Unable to clip external subtitle file '{externalSubtitlePath}' for two-step burn-in. {ex.Message}",
+                null,
+                null);
+        }
+    }
+
+    private static async Task<SrtClipResult> ClipSrtSubtitleWindowAsync(
+        string sourceSubtitlePath,
+        string outputSubtitlePath,
+        double segmentStartSeconds,
+        double lengthSeconds,
+        CancellationToken cancellationToken)
+    {
+        var segmentStart = TimeSpan.FromSeconds(segmentStartSeconds);
+        var segmentEnd = segmentStart + TimeSpan.FromSeconds(lengthSeconds);
+        var input = await System.IO.File.ReadAllTextAsync(sourceSubtitlePath, cancellationToken).ConfigureAwait(false);
+        var normalizedInput = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var rawBlocks = normalizedInput
+            .Split("\n\n", StringSplitOptions.None)
+            .Where(block => !string.IsNullOrWhiteSpace(block));
+
+        var outputBuilder = new StringBuilder();
+        var cueIndex = 1;
+        foreach (var rawBlock in rawBlocks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var blockLines = rawBlock.Split('\n', StringSplitOptions.None);
+            var timingLineIndex = Array.FindIndex(blockLines, line => SrtTimingLinePattern.IsMatch(line));
+            if (timingLineIndex < 0)
+            {
+                continue;
+            }
+
+            var timingMatch = SrtTimingLinePattern.Match(blockLines[timingLineIndex]);
+            var sourceStart = ParseSrtTimestamp(timingMatch.Groups["start"].Value);
+            var sourceEnd = ParseSrtTimestamp(timingMatch.Groups["end"].Value);
+            if (sourceEnd <= sourceStart)
+            {
+                continue;
+            }
+
+            if (sourceEnd <= segmentStart || sourceStart >= segmentEnd)
+            {
+                continue;
+            }
+
+            var clippedStart = sourceStart - segmentStart;
+            var clippedEnd = sourceEnd - segmentStart;
+            if (clippedStart < TimeSpan.Zero)
+            {
+                clippedStart = TimeSpan.Zero;
+            }
+
+            if (clippedEnd <= TimeSpan.Zero)
+            {
+                continue;
+            }
+
+            if (clippedEnd > TimeSpan.FromSeconds(lengthSeconds))
+            {
+                clippedEnd = TimeSpan.FromSeconds(lengthSeconds);
+            }
+
+            if (clippedEnd <= clippedStart)
+            {
+                clippedEnd = clippedStart + TimeSpan.FromMilliseconds(1);
+            }
+
+            outputBuilder.Append(cueIndex.ToString(CultureInfo.InvariantCulture));
+            outputBuilder.AppendLine();
+            outputBuilder.Append(FormatSrtTimestamp(clippedStart));
+            outputBuilder.Append(" --> ");
+            outputBuilder.Append(FormatSrtTimestamp(clippedEnd));
+            outputBuilder.Append(timingMatch.Groups["settings"].Value);
+            outputBuilder.AppendLine();
+            for (var i = timingLineIndex + 1; i < blockLines.Length; i++)
+            {
+                outputBuilder.AppendLine(blockLines[i]);
+            }
+
+            outputBuilder.AppendLine();
+            cueIndex++;
+        }
+
+        await System.IO.File.WriteAllTextAsync(outputSubtitlePath, outputBuilder.ToString(), cancellationToken).ConfigureAwait(false);
+        return new SrtClipResult(cueIndex - 1);
+    }
+
+    private static TimeSpan ParseSrtTimestamp(string value)
+    {
+        var normalized = value.Replace(',', '.');
+        var parts = normalized.Split(':');
+        if (parts.Length != 3)
+        {
+            throw new FormatException($"Invalid SRT timestamp '{value}'.");
+        }
+
+        var secondsParts = parts[2].Split('.', StringSplitOptions.None);
+        if (secondsParts.Length is < 1 or > 2)
+        {
+            throw new FormatException($"Invalid SRT timestamp seconds field '{value}'.");
+        }
+
+        var hours = int.Parse(parts[0], CultureInfo.InvariantCulture);
+        var minutes = int.Parse(parts[1], CultureInfo.InvariantCulture);
+        var seconds = int.Parse(secondsParts[0], CultureInfo.InvariantCulture);
+        var milliseconds = 0;
+        if (secondsParts.Length == 2)
+        {
+            var fractionalSeconds = secondsParts[1].PadRight(3, '0');
+            milliseconds = int.Parse(fractionalSeconds[..3], CultureInfo.InvariantCulture);
+        }
+
+        return new TimeSpan(0, hours, minutes, seconds, milliseconds);
+    }
+
+    private static string FormatSrtTimestamp(TimeSpan value)
+    {
+        if (value < TimeSpan.Zero)
+        {
+            value = TimeSpan.Zero;
+        }
+
+        var totalHours = (int)value.TotalHours;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{totalHours:00}:{value.Minutes:00}:{value.Seconds:00},{value.Milliseconds:000}");
+    }
+
     private string ResolveFfmpegPath()
     {
         var configuredPath = _serverConfigurationManager.GetEncodingOptions().EncoderAppPath;
@@ -1445,4 +1711,13 @@ public class GifController : ControllerBase
         int? JellyfinSubtitleStreamIndex,
         int? FfmpegSubtitleOrdinal,
         string? ExternalSubtitlePath);
+
+    private sealed record PreparedSubtitleClipResult(
+        bool IsSuccess,
+        bool IsRecoverableFailure,
+        string? ErrorMessage,
+        string? PreparedSubtitlePath,
+        int? KeptCueCount);
+
+    private readonly record struct SrtClipResult(int KeptCueCount);
 }
