@@ -112,9 +112,6 @@ Generated GIF files are cleaned up automatically when plugin endpoints are used:
 - If storage keeps growing, cleanup also prunes oldest files beyond the built-in max file count guardrail.
 
 Daily GIF creation is exposed as a dedicated **GIF Generator** user page in the main menu.
-Use the dedicated in-app route:
-
-`#!/gif-generator`
 
 If a user opens this route without a valid Jellyfin session token/current user context, the page immediately redirects to Jellyfin login and returns to the same route after sign-in.
 
@@ -139,17 +136,8 @@ Current strategy: use `Accurate` before 10 minutes and `Fast` at/after 10 minute
 
 ## User Access Contract
 
-- **Canonical UI path:** the authenticated user generation experience is `#!/gif-generator`.
 - **Authentication source:** UI access and API calls use Jellyfin session context from `ApiClient` (session token + current user).
 - **API contract:** plugin API endpoints remain protected with `[Authorize]`; no anonymous plugin endpoints are exposed.
-- **Separation of concerns:** `Configuration/configPage.html` is for admin-managed defaults only, while GIF generation is user-facing via the canonical route.
-- **Optional enhancements:** item-detail actions or similar entry points are optional helpers, must be non-blocking, and must never replace `#!/gif-generator` as canonical.
-
-### Future UI Addition Checklist
-
-- Must tolerate missing/renamed DOM hooks without breaking core generation flow.
-- Must not rely on aggressive mutation polling loops to function.
-- Must degrade gracefully (feature absent is acceptable; user route and API remain functional).
 
 ## Installing via a custom plugin repository
 
@@ -184,3 +172,8 @@ This repo now includes the **📦 Build Repository Package** GitHub Actions work
    - Create a GitHub release and upload `jellyfin-plugin-gif-generator.zip`.
 
 After that, Jellyfin clients using the manifest URL above can install/update from the repository.
+
+### Dependencies
+
+The admin-facing page has no dependencies
+The User-facing page depends on https://github.com/IAmParadox27/jellyfin-plugin-pages which again depends on "File Transformations" from the same repo
