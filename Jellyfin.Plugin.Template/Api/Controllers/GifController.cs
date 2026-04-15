@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Template.Api.Models;
+using Jellyfin.Plugin.Template.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
@@ -167,8 +168,24 @@ public class GifController : ControllerBase
         var outputFileName = $"{request.ItemId:N}_{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.gif";
         var outputPath = Path.Combine(outputDirectory, outputFileName);
 
-        var fps = request.Fps > 0 ? request.Fps : plugin.Configuration.DefaultFps;
-        var width = request.Width > 0 ? request.Width : plugin.Configuration.DefaultWidth;
+        var fps = request.Fps > 0 ? request.Fps : PluginConfiguration.ClampDefaultFps(plugin.Configuration.DefaultFps);
+        if (fps < PluginConfiguration.MinGifFps || fps > PluginConfiguration.MaxGifFps)
+        {
+            return BadRequest($"Effective fps must be between {PluginConfiguration.MinGifFps} and {PluginConfiguration.MaxGifFps}. Provided effective value: {fps}.");
+        }
+
+        var width = request.Width > 0 ? request.Width : PluginConfiguration.ClampDefaultWidth(plugin.Configuration.DefaultWidth);
+        if (width < PluginConfiguration.MinGifWidth || width > PluginConfiguration.MaxGifWidth)
+        {
+            return BadRequest($"Effective width must be between {PluginConfiguration.MinGifWidth} and {PluginConfiguration.MaxGifWidth}. Provided effective value: {width}.");
+        }
+
+        if ((width % 2) != 0)
+        {
+            // Normalize odd widths for better ffmpeg encoder/filter compatibility.
+            width--;
+        }
+
         var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
         var requestStartedAtUtc = DateTimeOffset.UtcNow;
 
