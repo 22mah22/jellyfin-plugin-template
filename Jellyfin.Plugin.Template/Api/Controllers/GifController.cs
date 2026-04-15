@@ -84,7 +84,20 @@ public class GifController : ControllerBase
         "Could not write header for output file",
         "Could not find tag for codec",
         "Error initializing output stream",
-        "Error selecting an encoder"
+        "Error selecting an encoder",
+        "Automatic encoder selection failed",
+        "Encoder did not produce proper pts",
+        "Subtitle codec 94213 is not supported",
+        "Neither text nor ssav2 are accepted"
+    ];
+
+    private static readonly string[] UnrecoverableStageAFailureMarkers =
+    [
+        "No such file or directory",
+        "Invalid data found when processing input",
+        "Permission denied",
+        "could not open input file",
+        "Error opening input"
     ];
 
     private readonly ILibraryManager _libraryManager;
@@ -190,11 +203,13 @@ public class GifController : ControllerBase
         var requestStartedAtUtc = DateTimeOffset.UtcNow;
 
         _logger.LogInformation(
-            "GIF generation started for item {ItemId}. start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} requestedAtUtc={RequestedAtUtc:o}.",
+            "GIF generation started for item {ItemId}. start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal} requestedAtUtc={RequestedAtUtc:o}.",
             request.ItemId,
             request.StartSeconds,
             request.LengthSeconds,
             request.SubtitleStreamIndex,
+            subtitleSelection.JellyfinSubtitleStreamIndex,
+            subtitleSelection.FfmpegSubtitleOrdinal,
             requestStartedAtUtc);
 
         if (!hasSubtitleBurnIn)
@@ -444,29 +459,37 @@ public class GifController : ControllerBase
                 lengthSeconds,
                 inputPath,
                 intermediatePath,
-                subtitleSelection);
+                subtitleSelection.JellyfinSubtitleStreamIndex,
+                subtitleSelection.FfmpegSubtitleOrdinal);
             var stageAResult = await RunFfmpegAsync(stageAInfo, cancellationToken).ConfigureAwait(false);
             stageAStopwatch.Stop();
             _logger.LogInformation(
-                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}).",
+                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}).",
                 stageIdentifier,
                 itemId,
                 stageAStopwatch.ElapsedMilliseconds,
                 requestStartSeconds,
                 lengthSeconds,
-                requestedSubtitleStreamIndex);
+                requestedSubtitleStreamIndex,
+                subtitleSelection.JellyfinSubtitleStreamIndex,
+                subtitleSelection.FfmpegSubtitleOrdinal);
             if (!stageAResult.IsSuccess)
             {
+                var shouldAttemptFallback = ShouldAttemptSinglePassFallback(stageIdentifier, stageAResult.ErrorMessage);
                 _logger.LogWarning(
-                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}",
+                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}. fallbackSinglePass={FallbackSinglePass} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}",
                     stageIdentifier,
                     itemId,
-                    stageAResult.ErrorMessage);
+                    stageAResult.ErrorMessage,
+                    shouldAttemptFallback,
+                    subtitleSelection.JellyfinSubtitleStreamIndex,
+                    subtitleSelection.FfmpegSubtitleOrdinal);
                 var twoStepErrorMessage = $"GIF pipeline failed at {stageIdentifier}: {stageAResult.ErrorMessage}";
-                return new SubtitlePipelineRunResult(false, twoStepErrorMessage, IsRecoverableTwoStepPreparationFailure(stageAResult.ErrorMessage));
+                return new SubtitlePipelineRunResult(false, twoStepErrorMessage, shouldAttemptFallback);
             }
 
             stageIdentifier = "stageB";
+            var stageBSubtitleSelection = RebaseSubtitleSelectionForIntermediateStage(subtitleSelection);
             var stageBStopwatch = Stopwatch.StartNew();
             var stageBInfo = BuildStageBCmd(
                 ffmpegPath,
@@ -474,26 +497,30 @@ public class GifController : ControllerBase
                 fps,
                 width,
                 outputPath,
-                subtitleSelection,
+                stageBSubtitleSelection,
                 subtitleFontSize,
                 subtitleTimingModel.EffectiveSubtitleOffsetSeconds);
             var stageBResult = await RunFfmpegAsync(stageBInfo, cancellationToken).ConfigureAwait(false);
             stageBStopwatch.Stop();
             _logger.LogInformation(
-                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}).",
+                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}).",
                 stageIdentifier,
                 itemId,
                 stageBStopwatch.ElapsedMilliseconds,
                 requestStartSeconds,
                 lengthSeconds,
-                requestedSubtitleStreamIndex);
+                requestedSubtitleStreamIndex,
+                stageBSubtitleSelection.JellyfinSubtitleStreamIndex,
+                stageBSubtitleSelection.FfmpegSubtitleOrdinal);
             if (!stageBResult.IsSuccess)
             {
                 _logger.LogWarning(
-                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}",
+                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}. selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}",
                     stageIdentifier,
                     itemId,
-                    stageBResult.ErrorMessage);
+                    stageBResult.ErrorMessage,
+                    stageBSubtitleSelection.JellyfinSubtitleStreamIndex,
+                    stageBSubtitleSelection.FfmpegSubtitleOrdinal);
                 return new SubtitlePipelineRunResult(false, $"GIF pipeline failed at {stageIdentifier}: {stageBResult.ErrorMessage}", false);
             }
 
@@ -565,35 +592,67 @@ public class GifController : ControllerBase
         if (!runResult.IsSuccess)
         {
             _logger.LogWarning(
-                "GIF subtitle fallback single-pass pipeline failed for item {ItemId} after {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}). Error: {ErrorMessage}",
+                "GIF subtitle fallback single-pass pipeline failed for item {ItemId} after {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}). Error: {ErrorMessage}",
                 itemId,
                 stopwatch.ElapsedMilliseconds,
                 requestStartSeconds,
                 lengthSeconds,
                 requestedSubtitleStreamIndex,
+                subtitleSelection.JellyfinSubtitleStreamIndex,
+                subtitleSelection.FfmpegSubtitleOrdinal,
                 runResult.ErrorMessage);
             return new FfmpegRunResult(false, $"GIF fallback single-pass pipeline failed: {runResult.ErrorMessage}");
         }
 
         _logger.LogInformation(
-            "GIF subtitle fallback single-pass pipeline completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}).",
+            "GIF subtitle fallback single-pass pipeline completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}).",
             itemId,
             stopwatch.ElapsedMilliseconds,
             requestStartSeconds,
             lengthSeconds,
-            requestedSubtitleStreamIndex);
+            requestedSubtitleStreamIndex,
+            subtitleSelection.JellyfinSubtitleStreamIndex,
+            subtitleSelection.FfmpegSubtitleOrdinal);
 
         return new FfmpegRunResult(true, null);
     }
 
-    private static bool IsRecoverableTwoStepPreparationFailure(string? errorMessage)
+    private static bool ShouldAttemptSinglePassFallback(string stageIdentifier, string? errorMessage)
+    {
+        if (!string.Equals(stageIdentifier, "stageA", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (IsClearlyUnrecoverableStageAFailure(errorMessage))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            return true;
+        }
+
+        if (IsRecoverableTwoStepPreparationFailure(errorMessage))
+        {
+            return true;
+        }
+
+        return true;
+    }
+
+    private static bool IsRecoverableTwoStepPreparationFailure(string errorMessage)
+        => RecoverableTwoStepPreparationErrorMarkers.Any(marker => errorMessage.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsClearlyUnrecoverableStageAFailure(string? errorMessage)
     {
         if (string.IsNullOrWhiteSpace(errorMessage))
         {
             return false;
         }
 
-        return RecoverableTwoStepPreparationErrorMarkers.Any(marker => errorMessage.Contains(marker, StringComparison.OrdinalIgnoreCase));
+        return UnrecoverableStageAFailureMarkers.Any(marker => errorMessage.Contains(marker, StringComparison.OrdinalIgnoreCase));
     }
 
     private static ProcessStartInfo BuildStageACmd(
@@ -602,7 +661,8 @@ public class GifController : ControllerBase
         double lengthSeconds,
         string inputPath,
         string intermediatePath,
-        SubtitleSelection subtitleSelection)
+        int? jellyfinSubtitleStreamIndex,
+        int? ffmpegSubtitleOrdinal)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
@@ -628,10 +688,10 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add(length);
         processInfo.ArgumentList.Add("-map");
         processInfo.ArgumentList.Add("0:v:0");
-        if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue)
+        if (jellyfinSubtitleStreamIndex.HasValue && ffmpegSubtitleOrdinal.HasValue)
         {
             processInfo.ArgumentList.Add("-map");
-            processInfo.ArgumentList.Add("0:s?");
+            processInfo.ArgumentList.Add($"0:s:{ffmpegSubtitleOrdinal.Value.ToString(CultureInfo.InvariantCulture)}");
         }
 
         processInfo.ArgumentList.Add("-an");
@@ -641,7 +701,7 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add("veryfast");
         processInfo.ArgumentList.Add("-crf");
         processInfo.ArgumentList.Add("18");
-        if (subtitleSelection.FfmpegSubtitleOrdinal.HasValue)
+        if (jellyfinSubtitleStreamIndex.HasValue && ffmpegSubtitleOrdinal.HasValue)
         {
             processInfo.ArgumentList.Add("-c:s");
             processInfo.ArgumentList.Add("copy");
@@ -728,6 +788,16 @@ public class GifController : ControllerBase
 
     private static string BuildGifScaleAndFpsFilter(int fps, int width)
         => string.Create(CultureInfo.InvariantCulture, $"fps={fps},scale={width}:-1:flags=lanczos");
+
+    private static SubtitleSelection RebaseSubtitleSelectionForIntermediateStage(SubtitleSelection subtitleSelection)
+    {
+        if (!subtitleSelection.FfmpegSubtitleOrdinal.HasValue || subtitleSelection.FfmpegSubtitleOrdinal.Value == 0)
+        {
+            return subtitleSelection;
+        }
+
+        return subtitleSelection with { FfmpegSubtitleOrdinal = 0 };
+    }
 
     private static string BuildVideoFilter(
         int fps,
@@ -843,21 +913,21 @@ public class GifController : ControllerBase
     {
         if (!subtitleStreamIndex.HasValue)
         {
-            return new SubtitleSelection(true, null, null, null);
+            return new SubtitleSelection(true, null, null, null, null);
         }
 
         var subtitleStreams = GetSubtitleStreams(item).ToList();
         var selectedSubtitle = subtitleStreams.FirstOrDefault(stream => stream.Index == subtitleStreamIndex.Value);
         if (selectedSubtitle is null)
         {
-            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' does not exist as a subtitle stream on the selected item.", null, null);
+            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' does not exist as a subtitle stream on the selected item.", null, null, null);
         }
 
         if (selectedSubtitle.IsExternal)
         {
             if (string.IsNullOrWhiteSpace(selectedSubtitle.Path))
             {
-                return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' is external but does not expose a file path.", null, null);
+                return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' is external but does not expose a file path.", null, null, null);
             }
 
             var resolvedExternalPath = ResolveExternalSubtitlePath(item.Path, selectedSubtitle.Path);
@@ -867,20 +937,21 @@ public class GifController : ControllerBase
                     false,
                     $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' points to missing subtitle file '{selectedSubtitle.Path}'. Re-scan metadata or pick another subtitle stream.",
                     null,
+                    null,
                     null);
             }
 
             if (!IsTextSubtitleStream(selectedSubtitle))
             {
-                return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' uses a non-text subtitle format that ffmpeg cannot burn into GIFs. Choose a text subtitle stream (SRT/ASS/WebVTT) or generate without subtitles.", null, null);
+                return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' uses a non-text subtitle format that ffmpeg cannot burn into GIFs. Choose a text subtitle stream (SRT/ASS/WebVTT) or generate without subtitles.", null, null, null);
             }
 
-            return new SubtitleSelection(true, null, null, resolvedExternalPath);
+            return new SubtitleSelection(true, null, selectedSubtitle.Index, null, resolvedExternalPath);
         }
 
         if (!IsTextSubtitleStream(selectedSubtitle))
         {
-            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' uses codec '{selectedSubtitle.Codec ?? "unknown"}', which is image-based and not supported by ffmpeg's subtitles filter for GIF generation.", null, null);
+            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' uses codec '{selectedSubtitle.Codec ?? "unknown"}', which is image-based and not supported by ffmpeg's subtitles filter for GIF generation.", null, null, null);
         }
 
         var ffmpegSubtitleOrdinal = subtitleStreams
@@ -891,10 +962,10 @@ public class GifController : ControllerBase
 
         if (!ffmpegSubtitleOrdinal.HasValue)
         {
-            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' could not be mapped to an ffmpeg subtitle stream ordinal.", null, null);
+            return new SubtitleSelection(false, $"SubtitleStreamIndex '{subtitleStreamIndex.Value}' could not be mapped to an ffmpeg subtitle stream ordinal.", selectedSubtitle.Index, null, null);
         }
 
-        return new SubtitleSelection(true, null, ffmpegSubtitleOrdinal.Value, null);
+        return new SubtitleSelection(true, null, selectedSubtitle.Index, ffmpegSubtitleOrdinal.Value, null);
     }
 
     private static string EscapeFilterValue(string value)
@@ -1371,6 +1442,7 @@ public class GifController : ControllerBase
     private sealed record SubtitleSelection(
         bool IsValid,
         string? ErrorMessage,
+        int? JellyfinSubtitleStreamIndex,
         int? FfmpegSubtitleOrdinal,
         string? ExternalSubtitlePath);
 }
