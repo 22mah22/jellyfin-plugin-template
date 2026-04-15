@@ -29,6 +29,8 @@ namespace Jellyfin.Plugin.Template.Api.Controllers;
 [Route("Plugins/GifGenerator")]
 public class GifController : ControllerBase
 {
+    private const double StageAFastSeekMinimumOffsetSeconds = 45;
+    private const double TimingSensitiveSubtitleOffsetThresholdSeconds = 0.001;
     private const double MaxSubtitleOffsetSeconds = 30;
     private const double SystemSubtitleTimingCompensationSeconds = 0;
     private const int MinimumGifRetentionHours = 1;
@@ -459,23 +461,32 @@ public class GifController : ControllerBase
         try
         {
             var stageAStopwatch = Stopwatch.StartNew();
+            var stageASeekMode = ResolveStageASeekMode(requestStartSeconds, subtitleTimingModel.EffectiveSubtitleOffsetSeconds);
             var stageAInfo = BuildStageACmd(
                 ffmpegPath,
                 subtitleTimingModel.SegmentStartSeconds,
                 lengthSeconds,
                 inputPath,
                 intermediatePath,
+                stageASeekMode,
                 subtitleSelection.JellyfinSubtitleStreamIndex,
                 subtitleSelection.FfmpegSubtitleOrdinal);
-            var stageAResult = await RunFfmpegAsync(stageAInfo, cancellationToken).ConfigureAwait(false);
+            var stageATelemetry = new FfmpegExecutionTelemetry(
+                itemId,
+                stageIdentifier,
+                requestStartSeconds,
+                stageASeekMode.ToString());
+
+            var stageAResult = await RunFfmpegAsync(stageAInfo, cancellationToken, stageATelemetry).ConfigureAwait(false);
             stageAStopwatch.Stop();
             _logger.LogInformation(
-                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}).",
+                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s seekMode={SeekMode} subtitleStreamIndex={SubtitleStreamIndex} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}).",
                 stageIdentifier,
                 itemId,
                 stageAStopwatch.ElapsedMilliseconds,
                 requestStartSeconds,
                 lengthSeconds,
+                stageASeekMode,
                 requestedSubtitleStreamIndex,
                 subtitleSelection.JellyfinSubtitleStreamIndex,
                 subtitleSelection.FfmpegSubtitleOrdinal);
@@ -483,10 +494,11 @@ public class GifController : ControllerBase
             {
                 var shouldAttemptFallback = ShouldAttemptSinglePassFallback(stageIdentifier, stageAResult.ErrorMessage);
                 _logger.LogWarning(
-                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}. fallbackSinglePass={FallbackSinglePass} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}",
+                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}. seekMode={SeekMode} fallbackSinglePass={FallbackSinglePass} selectedSubtitleJellyfinStreamIndex={SelectedSubtitleJellyfinStreamIndex} selectedSubtitleFfmpegOrdinal={SelectedSubtitleFfmpegOrdinal}",
                     stageIdentifier,
                     itemId,
                     stageAResult.ErrorMessage,
+                    stageASeekMode,
                     shouldAttemptFallback,
                     subtitleSelection.JellyfinSubtitleStreamIndex,
                     subtitleSelection.FfmpegSubtitleOrdinal);
@@ -717,6 +729,7 @@ public class GifController : ControllerBase
         double lengthSeconds,
         string inputPath,
         string intermediatePath,
+        StageASeekMode seekMode,
         int? jellyfinSubtitleStreamIndex,
         int? ffmpegSubtitleOrdinal)
     {
@@ -735,11 +748,25 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add("-hide_banner");
         processInfo.ArgumentList.Add("-loglevel");
         processInfo.ArgumentList.Add("error");
+        processInfo.ArgumentList.Add("-progress");
+        processInfo.ArgumentList.Add("pipe:2");
+
+        if (seekMode == StageASeekMode.FastInputSeek)
+        {
+            processInfo.ArgumentList.Add("-ss");
+            processInfo.ArgumentList.Add(start);
+        }
+
         processInfo.ArgumentList.Add("-i");
         processInfo.ArgumentList.Add(inputPath);
-        // Accurate seek on subtitle path keeps subtitle timing aligned for burn-in.
-        processInfo.ArgumentList.Add("-ss");
-        processInfo.ArgumentList.Add(start);
+
+        if (seekMode == StageASeekMode.AccurateOutputSeek)
+        {
+            // Accurate output-side seek keeps subtitle timing aligned when timing precision is sensitive.
+            processInfo.ArgumentList.Add("-ss");
+            processInfo.ArgumentList.Add(start);
+        }
+
         processInfo.ArgumentList.Add("-t");
         processInfo.ArgumentList.Add(length);
         processInfo.ArgumentList.Add("-map");
@@ -767,6 +794,22 @@ public class GifController : ControllerBase
         processInfo.ArgumentList.Add(intermediatePath);
 
         return processInfo;
+    }
+
+    private static StageASeekMode ResolveStageASeekMode(double requestStartSeconds, double effectiveSubtitleOffsetSeconds)
+    {
+        if (requestStartSeconds < StageAFastSeekMinimumOffsetSeconds)
+        {
+            return StageASeekMode.AccurateOutputSeek;
+        }
+
+        var hasTimingSensitiveOffset = Math.Abs(effectiveSubtitleOffsetSeconds) > TimingSensitiveSubtitleOffsetThresholdSeconds;
+        if (hasTimingSensitiveOffset)
+        {
+            return StageASeekMode.AccurateOutputSeek;
+        }
+
+        return StageASeekMode.FastInputSeek;
     }
 
     private static ProcessStartInfo BuildSubtitleSinglePassCmd(
@@ -1605,12 +1648,26 @@ public class GifController : ControllerBase
         }
     }
 
-    private static async Task<FfmpegRunResult> RunFfmpegAsync(ProcessStartInfo processInfo, CancellationToken cancellationToken)
+    private async Task<FfmpegRunResult> RunFfmpegAsync(
+        ProcessStartInfo processInfo,
+        CancellationToken cancellationToken,
+        FfmpegExecutionTelemetry? telemetry = null)
     {
+        var processTimer = Stopwatch.StartNew();
         using var process = new Process { StartInfo = processInfo };
         try
         {
             process.Start();
+            if (telemetry is not null)
+            {
+                _logger.LogInformation(
+                    "FFmpeg process started for item {ItemId} stage={StageId} seekMode={SeekMode} start={StartSeconds}s subprocessStartMs={SubprocessStartMs}.",
+                    telemetry.ItemId,
+                    telemetry.StageId,
+                    telemetry.SeekMode,
+                    telemetry.StartSeconds,
+                    processTimer.ElapsedMilliseconds);
+            }
         }
         catch (Win32Exception)
         {
@@ -1619,7 +1676,7 @@ public class GifController : ControllerBase
                 $"Unable to start ffmpeg at '{processInfo.FileName}'. Configure Jellyfin's encoder path to use Jellyfin's ffmpeg binary.");
         }
 
-        var stderrTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        var stderrCaptureTask = CaptureStandardErrorAsync(process, processTimer, telemetry);
         try
         {
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
@@ -1628,18 +1685,109 @@ public class GifController : ControllerBase
         {
             TryTerminateProcess(process);
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            _ = await stderrTask.ConfigureAwait(false);
+            _ = await stderrCaptureTask.ConfigureAwait(false);
             return new FfmpegRunResult(false, "ffmpeg execution was canceled.");
         }
 
-        var stderr = await stderrTask.ConfigureAwait(false);
+        var stderrCapture = await stderrCaptureTask.ConfigureAwait(false);
+
+        if (telemetry is not null)
+        {
+            _logger.LogInformation(
+                "FFmpeg process exited for item {ItemId} stage={StageId} seekMode={SeekMode} start={StartSeconds}s exitCode={ExitCode} firstFrameMs={FirstFrameMs} totalMs={TotalMs}.",
+                telemetry.ItemId,
+                telemetry.StageId,
+                telemetry.SeekMode,
+                telemetry.StartSeconds,
+                process.ExitCode,
+                stderrCapture.FirstFrameElapsedMilliseconds,
+                processTimer.ElapsedMilliseconds);
+        }
 
         if (process.ExitCode != 0)
         {
-            return new FfmpegRunResult(false, $"ffmpeg failed with exit code {process.ExitCode}. {stderr}");
+            return new FfmpegRunResult(false, $"ffmpeg failed with exit code {process.ExitCode}. {stderrCapture.StandardError}");
         }
 
         return new FfmpegRunResult(true, null);
+    }
+
+    private async Task<FfmpegStandardErrorCaptureResult> CaptureStandardErrorAsync(
+        Process process,
+        Stopwatch processTimer,
+        FfmpegExecutionTelemetry? telemetry)
+    {
+        var stderrBuilder = new StringBuilder();
+        long? firstFrameElapsedMilliseconds = null;
+
+        while (true)
+        {
+            var line = await process.StandardError.ReadLineAsync().ConfigureAwait(false);
+            if (line is null)
+            {
+                break;
+            }
+
+            stderrBuilder.AppendLine(line);
+            if (firstFrameElapsedMilliseconds.HasValue)
+            {
+                continue;
+            }
+
+            if (!TryParseFfmpegFrameCount(line, out var frameCount) || frameCount <= 0)
+            {
+                continue;
+            }
+
+            firstFrameElapsedMilliseconds = processTimer.ElapsedMilliseconds;
+            if (telemetry is not null)
+            {
+                _logger.LogInformation(
+                    "FFmpeg first output frame observed for item {ItemId} stage={StageId} seekMode={SeekMode} start={StartSeconds}s frame={FrameCount} elapsedMs={ElapsedMs}.",
+                    telemetry.ItemId,
+                    telemetry.StageId,
+                    telemetry.SeekMode,
+                    telemetry.StartSeconds,
+                    frameCount,
+                    firstFrameElapsedMilliseconds.Value);
+            }
+        }
+
+        return new FfmpegStandardErrorCaptureResult(stderrBuilder.ToString(), firstFrameElapsedMilliseconds);
+    }
+
+    private static bool TryParseFfmpegFrameCount(string stderrLine, out int frameCount)
+    {
+        const string framePrefix = "frame=";
+        frameCount = 0;
+        var prefixIndex = stderrLine.IndexOf(framePrefix, StringComparison.OrdinalIgnoreCase);
+        if (prefixIndex < 0)
+        {
+            return false;
+        }
+
+        var valueStart = prefixIndex + framePrefix.Length;
+        while (valueStart < stderrLine.Length && char.IsWhiteSpace(stderrLine[valueStart]))
+        {
+            valueStart++;
+        }
+
+        var valueEnd = valueStart;
+        while (valueEnd < stderrLine.Length && char.IsDigit(stderrLine[valueEnd]))
+        {
+            valueEnd++;
+        }
+
+        if (valueEnd == valueStart)
+        {
+            return false;
+        }
+
+        return int.TryParse(
+            stderrLine[valueStart..valueEnd],
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out frameCount);
     }
 
     private static void TryTerminateProcess(Process process)
@@ -1736,4 +1884,20 @@ public class GifController : ControllerBase
         bool IsTemporaryPreparedSubtitleFile);
 
     private sealed record SrtClipResult(int KeptCueCount);
+
+    private enum StageASeekMode
+    {
+        FastInputSeek,
+        AccurateOutputSeek
+    }
+
+    private sealed record FfmpegExecutionTelemetry(
+        Guid ItemId,
+        string StageId,
+        double StartSeconds,
+        string SeekMode);
+
+    private sealed record FfmpegStandardErrorCaptureResult(
+        string StandardError,
+        long? FirstFrameElapsedMilliseconds);
 }
