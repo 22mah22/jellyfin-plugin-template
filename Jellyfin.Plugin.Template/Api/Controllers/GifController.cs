@@ -112,6 +112,12 @@ public class GifController : ControllerBase
     private readonly IApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
 
+    private enum StageASeekMode
+    {
+        FastInputSeek,
+        AccurateOutputSeek
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="GifController"/> class.
     /// </summary>
@@ -461,7 +467,11 @@ public class GifController : ControllerBase
         try
         {
             var stageAStopwatch = Stopwatch.StartNew();
-            var stageASeekMode = ResolveStageASeekMode(requestStartSeconds, subtitleTimingModel.EffectiveSubtitleOffsetSeconds);
+            var copiesInternalSubtitleStream = subtitleSelection.JellyfinSubtitleStreamIndex.HasValue && subtitleSelection.FfmpegSubtitleOrdinal.HasValue;
+            var stageASeekMode = ResolveStageASeekMode(
+                requestStartSeconds,
+                subtitleTimingModel.EffectiveSubtitleOffsetSeconds,
+                copiesInternalSubtitleStream);
             var stageAInfo = BuildStageACmd(
                 ffmpegPath,
                 subtitleTimingModel.SegmentStartSeconds,
@@ -796,9 +806,17 @@ public class GifController : ControllerBase
         return processInfo;
     }
 
-    private static StageASeekMode ResolveStageASeekMode(double requestStartSeconds, double effectiveSubtitleOffsetSeconds)
+    private static StageASeekMode ResolveStageASeekMode(
+        double requestStartSeconds,
+        double effectiveSubtitleOffsetSeconds,
+        bool copiesInternalSubtitleStream)
     {
         if (requestStartSeconds < StageAFastSeekMinimumOffsetSeconds)
+        {
+            return StageASeekMode.AccurateOutputSeek;
+        }
+
+        if (copiesInternalSubtitleStream)
         {
             return StageASeekMode.AccurateOutputSeek;
         }
@@ -1847,12 +1865,6 @@ public class GifController : ControllerBase
         {
             _logger.LogDebug(ex, "Failed to delete temporary gif pipeline directory '{Path}'.", path);
         }
-    }
-
-    private enum StageASeekMode
-    {
-        FastInputSeek,
-        AccurateOutputSeek
     }
 
     private readonly record struct SubtitleTimingModel(
