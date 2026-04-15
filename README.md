@@ -2,6 +2,12 @@
 
 This repository now contains a Jellyfin plugin that lets authenticated users generate GIF clips from local video library items using Jellyfin's configured ffmpeg binary.
 
+## Releases
+
+Gif generation works as intended from 1.0.0.0
+Gif generation with subtitles works fully from 1.2.0.0
+Random Gif generation with subtitle options works from 1.2.2.0
+
 ## Features
 
 - Authenticated API for GIF creation.
