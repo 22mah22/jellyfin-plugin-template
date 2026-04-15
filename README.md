@@ -9,7 +9,7 @@ This repository now contains a Jellyfin plugin that lets authenticated users gen
 - Uses Jellyfin's configured encoder path (`EncoderAppPath`) when available and falls back to Jellyfin-aware ffmpeg discovery (`JELLYFIN_FFMPEG`, `FFMPEG_PATH`, then `ffmpeg` on `PATH`).
 - Input parameters: source video item id, clip start time, and clip length.
 - Optional internal subtitle stream selection for burn-in rendering.
-- Subtitle burn-in seeking is optimized for subtitle timestamp alignment when burn-in is enabled.
+- Configurable subtitle seek strategy (`Accurate`, `Fast`, `Hybrid`) for subtitle burn-in workloads.
 - Secure GIF download endpoint for generated files.
 - Configurable maximum GIF length, default FPS, and default width.
 - Automatic cleanup of generated GIFs in `DataPath/plugins/gif-generator/generated` based on configurable retention (default 7 days), with a minimum retention floor and count-based pruning guardrail.
@@ -98,8 +98,17 @@ Open the plugin settings page in Jellyfin to control:
 - Default FPS
 - Default width
 - GIF retention window (hours) used by periodic cleanup during create/download requests
+- Subtitle seek mode used when subtitle burn-in is active
+- Hybrid pre-roll seconds used to coarse-seek near the target before a fine seek
 
-Subtitle burn-in always loads input first (`-i`) and applies seek after input (`-ss`) for strongest subtitle timing alignment.
+Subtitle seek modes apply only when subtitles are burned in:
+
+- `Accurate` (default): `-ss` after input for strongest subtitle timing alignment.
+- `Fast`: `-ss` before input for faster startup. This can introduce slight subtitle timing drift on some sources.
+- `Hybrid`: coarse `-ss` before input (`start - preRoll`), then fine `-ss` after input for a middle ground.
+- `Auto`: currently resolves to `Accurate` for subtitle burn-in reliability.
+
+`SubtitleSeekPreRollSeconds` (default `2`) is clamped to `0..120`.
 
 Generated GIF files are cleaned up automatically when plugin endpoints are used:
 
@@ -118,7 +127,7 @@ If item-level actions are needed in the future, they can be reintroduced in a se
 
 ## Subtitle Alignment Validation Notes
 
-Subtitle burn-in seek behavior was validated against common subtitle/container combinations used in Jellyfin libraries:
+The seek tradeoffs were validated against common subtitle/container combinations used in Jellyfin libraries:
 
 - MP4 + internal `mov_text`
 - MKV + internal `subrip` (SRT)
@@ -126,9 +135,13 @@ Subtitle burn-in seek behavior was validated against common subtitle/container c
 - MP4/MKV + external `.srt`
 - MP4/MKV + external `.ass`
 
-Observed behavior:
+Observed tradeoffs:
 
-- Post-input seek placement provides the most consistent subtitle timing alignment, with slower startup possible for large start offsets.
+- `Accurate`: best subtitle alignment consistency; slowest startup for large start offsets.
+- `Fast`: fastest startup; occasional early/late subtitle cues can occur around keyframe boundaries.
+- `Hybrid`: usually near-`Fast` startup while reducing drift compared with `Fast`, especially with `2-5s` pre-roll.
+
+Recommendation: keep `Accurate` for strict subtitle timing correctness; use `Hybrid` when long-offset performance matters.
 
 ## User Access Contract
 

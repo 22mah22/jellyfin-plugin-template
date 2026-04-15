@@ -177,7 +177,6 @@ public class PluginPagesDemoController : ControllerBase
 
                                         <div class="row">
                                             <button id="LoadSubtitlesButton" type="button">Load Subtitles</button>
-                                            <button id="RandomGifButton" type="button">Random gif</button>
                                             <button type="submit">Create GIF</button>
                                         </div>
 
@@ -193,7 +192,6 @@ public class PluginPagesDemoController : ControllerBase
                                         var currentResults = [];
                                         var searchDebounce = null;
                                         var currentBlobUrl = null;
-                                        var selectedItem = null;
 
                                         function setStatus(text, isError) {
                                             var node = document.getElementById('GifStatus');
@@ -361,26 +359,8 @@ public class PluginPagesDemoController : ControllerBase
 
                                         function setSelectedItem(item) {
                                             var id = item ? (item.Id || item.id || '') : '';
-                                            selectedItem = item || null;
                                             document.getElementById('GifItemId').value = id;
                                             document.getElementById('GifItemSelectedLabel').textContent = id ? ('Selected: ' + itemLabel(item)) : 'Selected: none';
-                                        }
-
-                                        function getRuntimeSeconds(item) {
-                                            var runTimeTicks = Number(item && (item.RunTimeTicks || item.runTimeTicks) || 0);
-                                            if (!Number.isFinite(runTimeTicks) || runTimeTicks <= 0) {
-                                                return 0;
-                                            }
-
-                                            return Math.floor(runTimeTicks / 10000000);
-                                        }
-
-                                        function formatTimecode(totalSeconds) {
-                                            var safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
-                                            var hours = Math.floor(safeSeconds / 3600);
-                                            var minutes = Math.floor((safeSeconds % 3600) / 60);
-                                            var seconds = safeSeconds % 60;
-                                            return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
                                         }
 
                                         function renderResults(items) {
@@ -417,7 +397,7 @@ public class PluginPagesDemoController : ControllerBase
                                             session = requireSession();
                                             document.getElementById('GifItemSearchResults').textContent = 'Loading...';
 
-                                            return apiFetch('/Users/' + encodeURIComponent(session.userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=MediaType,ProductionYear,RunTimeTicks&Limit=20&SortBy=SortName')
+                                            return apiFetch('/Users/' + encodeURIComponent(session.userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=MediaType,ProductionYear&Limit=20&SortBy=SortName')
                                                 .then(function (r) { return r.json(); })
                                                 .then(function (payload) {
                                                     var items = payload.Items || [];
@@ -468,38 +448,6 @@ public class PluginPagesDemoController : ControllerBase
                                                 .catch(function (err) {
                                                     setStatus('Could not load subtitles: ' + err.message, true);
                                                 });
-                                        }
-
-                                        function createRandomGif() {
-                                            var itemId = document.getElementById('GifItemId').value.trim();
-                                            var runtimeSeconds = getRuntimeSeconds(selectedItem);
-                                            var maxStart;
-                                            var randomStartSeconds;
-                                            var form;
-
-                                            if (!itemId) {
-                                                setStatus('Select an item first.', true);
-                                                return;
-                                            }
-
-                                            if (!runtimeSeconds || runtimeSeconds < 3) {
-                                                setStatus('Could not determine movie length. Load/select a movie result with runtime.', true);
-                                                return;
-                                            }
-
-                                            maxStart = Math.max(0, runtimeSeconds - 3);
-                                            randomStartSeconds = Math.floor(Math.random() * (maxStart + 1));
-
-                                            document.getElementById('GifLength').value = '3';
-                                            document.getElementById('GifStartTime').value = formatTimecode(randomStartSeconds);
-                                            setStatus('Using random start at ' + formatTimecode(randomStartSeconds) + '.', false);
-
-                                            form = document.getElementById('GifGeneratorCreateForm');
-                                            if (typeof form.requestSubmit === 'function') {
-                                                form.requestSubmit();
-                                            } else {
-                                                form.dispatchEvent(new Event('submit', { cancelable: true }));
-                                            }
                                         }
 
                                         function clearResult() {
@@ -650,7 +598,6 @@ public class PluginPagesDemoController : ControllerBase
 
                                             document.getElementById('GifGeneratorCreateForm').addEventListener('submit', createGif);
                                             document.getElementById('LoadSubtitlesButton').addEventListener('click', loadSubtitles);
-                                            document.getElementById('RandomGifButton').addEventListener('click', createRandomGif);
                                             document.getElementById('GifItemSearch').addEventListener('input', function (e) {
                                                 var query = e.target.value.trim();
                                                 clearTimeout(searchDebounce);
