@@ -112,12 +112,6 @@ public class GifController : ControllerBase
     private readonly IApplicationPaths _serverApplicationPaths;
     private readonly IServerConfigurationManager _serverConfigurationManager;
 
-    private enum StageASeekMode
-    {
-        FastInputSeek,
-        AccurateOutputSeek
-    }
-
     /// <summary>
     /// Initializes a new instance of the <see cref="GifController"/> class.
     /// </summary>
@@ -135,6 +129,12 @@ public class GifController : ControllerBase
         _logger = logger;
         _serverApplicationPaths = serverApplicationPaths;
         _serverConfigurationManager = serverConfigurationManager;
+    }
+
+    private enum StageASeekMode
+    {
+        FastInputSeek,
+        AccurateOutputSeek
     }
 
     /// <summary>
