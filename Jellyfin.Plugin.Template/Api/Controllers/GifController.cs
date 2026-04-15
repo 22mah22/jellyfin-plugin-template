@@ -161,10 +161,20 @@ public class GifController : ControllerBase
         var fps = request.Fps > 0 ? request.Fps : plugin.Configuration.DefaultFps;
         var width = request.Width > 0 ? request.Width : plugin.Configuration.DefaultWidth;
         var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
+        var requestStartedAtUtc = DateTimeOffset.UtcNow;
+
+        _logger.LogInformation(
+            "GIF generation started for item {ItemId}. start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex} requestedAtUtc={RequestedAtUtc:o}.",
+            request.ItemId,
+            request.StartSeconds,
+            request.LengthSeconds,
+            request.SubtitleStreamIndex,
+            requestStartedAtUtc);
 
         if (!hasSubtitleBurnIn)
         {
             // Keep the existing direct execution path for subtitle-free GIF generation.
+            var directStageStopwatch = Stopwatch.StartNew();
             var processInfo = BuildDirectGifCmd(
                 ffmpegPath,
                 request.StartSeconds,
@@ -179,13 +189,21 @@ public class GifController : ControllerBase
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, directRunResult.ErrorMessage);
             }
+
+            directStageStopwatch.Stop();
+            _logger.LogInformation(
+                "GIF generation completed direct path for item {ItemId} in {DurationMs}ms.",
+                request.ItemId,
+                directStageStopwatch.ElapsedMilliseconds);
         }
         else
         {
             var subtitleTimingModel = BuildSubtitleTimingModel(request.StartSeconds, subtitleOffsetResult.Seconds);
             var twoStepResult = await RunSubtitleTwoStepPipelineAsync(
+                request.ItemId,
                 ffmpegPath,
                 subtitleTimingModel,
+                request.StartSeconds,
                 request.LengthSeconds,
                 item.Path,
                 fps,
@@ -193,6 +211,7 @@ public class GifController : ControllerBase
                 outputPath,
                 subtitleSelection,
                 request.SubtitleFontSize,
+                request.SubtitleStreamIndex,
                 cancellationToken).ConfigureAwait(false);
             if (!twoStepResult.IsSuccess)
             {
@@ -329,8 +348,10 @@ public class GifController : ControllerBase
     }
 
     private async Task<FfmpegRunResult> RunSubtitleTwoStepPipelineAsync(
+        Guid itemId,
         string ffmpegPath,
         SubtitleTimingModel subtitleTimingModel,
+        double requestStartSeconds,
         double lengthSeconds,
         string inputPath,
         int fps,
@@ -338,8 +359,11 @@ public class GifController : ControllerBase
         string outputPath,
         SubtitleSelection subtitleSelection,
         int? subtitleFontSize,
+        int? requestedSubtitleStreamIndex,
         CancellationToken cancellationToken)
     {
+        var pipelineStopwatch = Stopwatch.StartNew();
+        var stageIdentifier = "stageA";
         var tempDirectory = Path.Combine(
             _serverApplicationPaths.DataPath,
             "plugins",
@@ -352,6 +376,7 @@ public class GifController : ControllerBase
 
         try
         {
+            var stageAStopwatch = Stopwatch.StartNew();
             var stageAInfo = BuildStageACmd(
                 ffmpegPath,
                 subtitleTimingModel.SegmentStartSeconds,
@@ -360,11 +385,27 @@ public class GifController : ControllerBase
                 intermediatePath,
                 subtitleSelection);
             var stageAResult = await RunFfmpegAsync(stageAInfo, cancellationToken).ConfigureAwait(false);
+            stageAStopwatch.Stop();
+            _logger.LogInformation(
+                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}).",
+                stageIdentifier,
+                itemId,
+                stageAStopwatch.ElapsedMilliseconds,
+                requestStartSeconds,
+                lengthSeconds,
+                requestedSubtitleStreamIndex);
             if (!stageAResult.IsSuccess)
             {
-                return new FfmpegRunResult(false, "Stage A failed while preparing subtitle source segment. " + stageAResult.ErrorMessage);
+                _logger.LogWarning(
+                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}",
+                    stageIdentifier,
+                    itemId,
+                    stageAResult.ErrorMessage);
+                return new FfmpegRunResult(false, $"GIF pipeline failed at {stageIdentifier}: {stageAResult.ErrorMessage}");
             }
 
+            stageIdentifier = "stageB";
+            var stageBStopwatch = Stopwatch.StartNew();
             var stageBInfo = BuildStageBCmd(
                 ffmpegPath,
                 intermediatePath,
@@ -375,15 +416,55 @@ public class GifController : ControllerBase
                 subtitleFontSize,
                 subtitleTimingModel.EffectiveSubtitleOffsetSeconds);
             var stageBResult = await RunFfmpegAsync(stageBInfo, cancellationToken).ConfigureAwait(false);
+            stageBStopwatch.Stop();
+            _logger.LogInformation(
+                "GIF pipeline {StageId} completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}).",
+                stageIdentifier,
+                itemId,
+                stageBStopwatch.ElapsedMilliseconds,
+                requestStartSeconds,
+                lengthSeconds,
+                requestedSubtitleStreamIndex);
             if (!stageBResult.IsSuccess)
             {
-                return new FfmpegRunResult(false, "Stage B failed while rendering subtitle GIF output. " + stageBResult.ErrorMessage);
+                _logger.LogWarning(
+                    "GIF pipeline {StageId} failed for item {ItemId}: {ErrorMessage}",
+                    stageIdentifier,
+                    itemId,
+                    stageBResult.ErrorMessage);
+                return new FfmpegRunResult(false, $"GIF pipeline failed at {stageIdentifier}: {stageBResult.ErrorMessage}");
             }
 
+            pipelineStopwatch.Stop();
+            _logger.LogInformation(
+                "GIF subtitle pipeline completed for item {ItemId} in {DurationMs}ms.",
+                itemId,
+                pipelineStopwatch.ElapsedMilliseconds);
             return new FfmpegRunResult(true, null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "GIF pipeline canceled at {StageId} for item {ItemId}. start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}.",
+                stageIdentifier,
+                itemId,
+                requestStartSeconds,
+                lengthSeconds,
+                requestedSubtitleStreamIndex);
+            return new FfmpegRunResult(false, $"GIF pipeline was canceled at {stageIdentifier}.");
         }
         finally
         {
+            TryDeleteFile(intermediatePath);
+
+            if (Directory.Exists(tempDirectory))
+            {
+                foreach (var artifactPath in Directory.EnumerateFiles(tempDirectory, "subtitle-*", SearchOption.TopDirectoryOnly))
+                {
+                    TryDeleteFile(artifactPath);
+                }
+            }
+
             TryDeleteDirectory(tempDirectory);
         }
     }
@@ -1018,8 +1099,19 @@ public class GifController : ControllerBase
                 $"Unable to start ffmpeg at '{processInfo.FileName}'. Configure Jellyfin's encoder path to use Jellyfin's ffmpeg binary.");
         }
 
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        var stderrTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            TryTerminateProcess(process);
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            _ = await stderrTask.ConfigureAwait(false);
+            return new FfmpegRunResult(false, "ffmpeg execution was canceled.");
+        }
+
         var stderr = await stderrTask.ConfigureAwait(false);
 
         if (process.ExitCode != 0)
@@ -1028,6 +1120,46 @@ public class GifController : ControllerBase
         }
 
         return new FfmpegRunResult(true, null);
+    }
+
+    private static void TryTerminateProcess(Process process)
+    {
+        if (process.HasExited)
+        {
+            return;
+        }
+
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // Process already exited.
+        }
+        catch (NotSupportedException)
+        {
+            process.Kill();
+        }
+    }
+
+    private void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (System.IO.File.Exists(path))
+            {
+                System.IO.File.Delete(path);
+            }
+        }
+        catch (IOException ex)
+        {
+            _logger.LogDebug(ex, "Failed to delete temporary gif pipeline file '{Path}'.", path);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogDebug(ex, "Failed to delete temporary gif pipeline file '{Path}'.", path);
+        }
     }
 
     private void TryDeleteDirectory(string path)
