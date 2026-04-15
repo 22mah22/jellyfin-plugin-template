@@ -299,8 +299,17 @@ public class GifController : ControllerBase
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-        var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds);
         var configuredSeekModeIsKnown = Enum.IsDefined(subtitleSeekMode);
+        var effectiveSeekMode = ResolveSubtitleSeekMode(startSeconds);
+        var videoFilter = BuildVideoFilter(
+            fps,
+            width,
+            inputPath,
+            subtitleSelection,
+            subtitleFontSize,
+            subtitleOffsetSeconds,
+            startSeconds,
+            effectiveSeekMode);
 
         var processInfo = new ProcessStartInfo
         {
@@ -330,7 +339,6 @@ public class GifController : ControllerBase
                 // Legacy/unknown persisted seek values are tolerated and mapped to deterministic threshold behavior.
             }
 
-            var effectiveSeekMode = ResolveSubtitleSeekMode(startSeconds);
             AddSubtitleSeekArguments(processInfo.ArgumentList, inputPath, startSeconds, effectiveSeekMode);
         }
 
@@ -387,11 +395,23 @@ public class GifController : ControllerBase
         string inputPath,
         SubtitleSelection subtitleSelection,
         int? subtitleFontSize,
-        double subtitleOffsetSeconds)
+        double subtitleOffsetSeconds,
+        double startSeconds,
+        SubtitleSeekMode effectiveSeekMode)
     {
         var builder = new StringBuilder();
         var hasSubtitleBurnIn = subtitleSelection.FfmpegSubtitleOrdinal.HasValue || !string.IsNullOrEmpty(subtitleSelection.ExternalSubtitlePath);
         var hasSubtitleOffset = Math.Abs(subtitleOffsetSeconds) > 0;
+        var hasFastSeekSubtitleRebase = hasSubtitleBurnIn && effectiveSeekMode == SubtitleSeekMode.Fast && startSeconds > 0;
+        if (hasFastSeekSubtitleRebase)
+        {
+            // With seek-before-input (fast mode), ffmpeg decodes from a rebased timeline.
+            // Rebase PTS back to absolute StartSeconds before subtitles so subtitle timestamps align under input-seek mode.
+            builder.Append("setpts=PTS+");
+            builder.Append(startSeconds.ToString("0.###", CultureInfo.InvariantCulture));
+            builder.Append("/TB,");
+        }
+
         if (hasSubtitleOffset && hasSubtitleBurnIn)
         {
             // Shift only subtitle evaluation timing, then restore original timestamps so GIF frame selection remains anchored to StartSeconds.
@@ -427,6 +447,14 @@ public class GifController : ControllerBase
             builder.Append("setpts=");
             builder.Append(BuildPtsOffsetExpression(subtitleOffsetSeconds, reverse: true));
             builder.Append(',');
+        }
+
+        if (hasFastSeekSubtitleRebase)
+        {
+            // Undo the input-seek subtitle timing rebase so downstream fps/scale processing keeps the existing output timeline.
+            builder.Append("setpts=PTS-");
+            builder.Append(startSeconds.ToString("0.###", CultureInfo.InvariantCulture));
+            builder.Append("/TB,");
         }
 
         builder.Append("fps=");
