@@ -177,6 +177,7 @@ public class PluginPagesDemoController : ControllerBase
 
                                         <div class="row">
                                             <button id="LoadSubtitlesButton" type="button">Load Subtitles</button>
+                                            <button id="RandomGifButton" type="button">Random gif</button>
                                             <button type="submit">Create GIF</button>
                                         </div>
 
@@ -192,6 +193,7 @@ public class PluginPagesDemoController : ControllerBase
                                         var currentResults = [];
                                         var searchDebounce = null;
                                         var currentBlobUrl = null;
+                                        var selectedItem = null;
 
                                         function setStatus(text, isError) {
                                             var node = document.getElementById('GifStatus');
@@ -351,6 +353,28 @@ public class PluginPagesDemoController : ControllerBase
                                             return (hours * 3600) + (minutes * 60) + seconds;
                                         }
 
+                                        function formatTimestamp(totalSeconds) {
+                                            var wholeSeconds = Math.max(0, Math.floor(totalSeconds));
+                                            var hours = Math.floor(wholeSeconds / 3600);
+                                            var minutes = Math.floor((wholeSeconds % 3600) / 60);
+                                            var seconds = wholeSeconds % 60;
+
+                                            if (hours > 0) {
+                                                return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+                                            }
+
+                                            return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+                                        }
+
+                                        function getRuntimeSeconds(item) {
+                                            var ticks = item && (item.RunTimeTicks != null ? item.RunTimeTicks : item.runTimeTicks);
+                                            if (!Number.isFinite(ticks) || ticks <= 0) {
+                                                return 0;
+                                            }
+
+                                            return ticks / 10000000;
+                                        }
+
                                         function itemLabel(item) {
                                             var title = item.Name || 'Untitled';
                                             var year = item.ProductionYear ? ' (' + item.ProductionYear + ')' : '';
@@ -359,6 +383,7 @@ public class PluginPagesDemoController : ControllerBase
 
                                         function setSelectedItem(item) {
                                             var id = item ? (item.Id || item.id || '') : '';
+                                            selectedItem = item || null;
                                             document.getElementById('GifItemId').value = id;
                                             document.getElementById('GifItemSelectedLabel').textContent = id ? ('Selected: ' + itemLabel(item)) : 'Selected: none';
                                         }
@@ -397,7 +422,7 @@ public class PluginPagesDemoController : ControllerBase
                                             session = requireSession();
                                             document.getElementById('GifItemSearchResults').textContent = 'Loading...';
 
-                                            return apiFetch('/Users/' + encodeURIComponent(session.userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=MediaType,ProductionYear&Limit=20&SortBy=SortName')
+                                            return apiFetch('/Users/' + encodeURIComponent(session.userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=MediaType,ProductionYear,RunTimeTicks&Limit=20&SortBy=SortName')
                                                 .then(function (r) { return r.json(); })
                                                 .then(function (payload) {
                                                     var items = payload.Items || [];
@@ -567,6 +592,31 @@ public class PluginPagesDemoController : ControllerBase
                                             return false;
                                         }
 
+                                        function createRandomGif() {
+                                            var itemId = document.getElementById('GifItemId').value.trim();
+                                            var runtimeSeconds;
+                                            var maxStartSeconds;
+                                            var randomStartSeconds;
+
+                                            if (!itemId) {
+                                                setStatus('Select a movie first.', true);
+                                                return;
+                                            }
+
+                                            runtimeSeconds = getRuntimeSeconds(selectedItem);
+                                            if (runtimeSeconds <= 0) {
+                                                setStatus('Pick the movie from search first so runtime is known.', true);
+                                                return;
+                                            }
+
+                                            maxStartSeconds = Math.max(0, Math.floor(runtimeSeconds - 3));
+                                            randomStartSeconds = Math.floor(Math.random() * (maxStartSeconds + 1));
+
+                                            document.getElementById('GifStartTime').value = formatTimestamp(randomStartSeconds);
+                                            document.getElementById('GifLength').value = '3';
+                                            document.getElementById('GifGeneratorCreateForm').requestSubmit();
+                                        }
+
                                         function hydrateFromQuery() {
                                             var params = new URLSearchParams(window.location.search || '');
                                             var itemId = (params.get('itemId') || params.get('id') || '').trim();
@@ -598,6 +648,7 @@ public class PluginPagesDemoController : ControllerBase
 
                                             document.getElementById('GifGeneratorCreateForm').addEventListener('submit', createGif);
                                             document.getElementById('LoadSubtitlesButton').addEventListener('click', loadSubtitles);
+                                            document.getElementById('RandomGifButton').addEventListener('click', createRandomGif);
                                             document.getElementById('GifItemSearch').addEventListener('input', function (e) {
                                                 var query = e.target.value.trim();
                                                 clearTimeout(searchDebounce);

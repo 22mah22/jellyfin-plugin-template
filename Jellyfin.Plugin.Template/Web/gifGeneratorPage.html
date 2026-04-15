@@ -68,6 +68,9 @@
                         <button id="LoadSubtitlesButton" is="emby-button" type="button" class="raised emby-button">
                             <span>Load Subtitles</span>
                         </button>
+                        <button id="RandomGifButton" is="emby-button" type="button" class="raised emby-button">
+                            <span>Random gif</span>
+                        </button>
                         <button is="emby-button" type="submit" class="raised button-submit emby-button">
                             <span>Create GIF</span>
                         </button>
@@ -95,6 +98,7 @@
                 var latestSearchRequestId = 0;
                 var currentSearchResults = [];
                 var activeResultIndex = -1;
+                var selectedItem = null;
 
                 function normalizeApiPath(path) {
                     return path.charAt(0) === '/' ? path.slice(1) : path;
@@ -408,6 +412,28 @@
                     return (hours * 3600) + (minutes * 60) + seconds;
                 }
 
+                function formatTimestamp(totalSeconds) {
+                    var wholeSeconds = Math.max(0, Math.floor(totalSeconds));
+                    var hours = Math.floor(wholeSeconds / 3600);
+                    var minutes = Math.floor((wholeSeconds % 3600) / 60);
+                    var seconds = wholeSeconds % 60;
+
+                    if (hours > 0) {
+                        return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+                    }
+
+                    return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+                }
+
+                function getRuntimeSeconds(item) {
+                    var ticks = item && (item.RunTimeTicks ?? item.runTimeTicks);
+                    if (!Number.isFinite(ticks) || ticks <= 0) {
+                        return 0;
+                    }
+
+                    return ticks / 10000000;
+                }
+
                 function subtitleLabel(stream) {
                     var parts = [];
 
@@ -483,6 +509,7 @@
                     var itemIdInput = document.querySelector('#GifItemId');
                     var selectedLabel = document.querySelector('#GifItemSelectedLabel');
 
+                    selectedItem = item || null;
                     itemIdInput.value = item && (item.Id || item.id) ? (item.Id || item.id) : '';
                     if (!item) {
                         selectedLabel.textContent = 'Selected: none';
@@ -606,7 +633,7 @@
                     latestSearchRequestId = requestId;
                     setSearchResultsMessage('Loading search results…', false);
 
-                    return apiRequest('/Users/' + encodeURIComponent(userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=ProductionYear,SeriesName,ParentIndexNumber,IndexNumber,MediaType&Limit=20&SortBy=SortName', {
+                    return apiRequest('/Users/' + encodeURIComponent(userId) + '/Items?Recursive=true&SearchTerm=' + encodeURIComponent(query) + '&IncludeItemTypes=Movie,Episode,Video,MusicVideo,Trailer&Fields=ProductionYear,SeriesName,ParentIndexNumber,IndexNumber,MediaType,RunTimeTicks&Limit=20&SortBy=SortName', {
                         method: 'GET'
                     }).then(function (response) {
                         return response.json();
@@ -772,6 +799,34 @@
                     }).catch(function (error) {
                         setStatus('Could not load subtitles: ' + error.message, true);
                     });
+                }
+
+                function onRandomGifClick() {
+                    var form = document.querySelector('#GifGeneratorCreateForm');
+                    var lengthInput = document.querySelector('#GifLength');
+                    var startInput = document.querySelector('#GifStartTime');
+                    var itemId = document.querySelector('#GifItemId').value.trim();
+                    var runtimeSeconds;
+                    var maxStartSeconds;
+                    var randomStartSeconds;
+
+                    if (!itemId) {
+                        setStatus('Select a movie first.', true);
+                        return;
+                    }
+
+                    runtimeSeconds = getRuntimeSeconds(selectedItem);
+                    if (runtimeSeconds <= 0) {
+                        setStatus('Pick the movie from search first so runtime is known.', true);
+                        return;
+                    }
+
+                    maxStartSeconds = Math.max(0, Math.floor(runtimeSeconds - 3));
+                    randomStartSeconds = Math.floor(Math.random() * (maxStartSeconds + 1));
+
+                    startInput.value = formatTimestamp(randomStartSeconds);
+                    lengthInput.value = '3';
+                    form.requestSubmit();
                 }
 
                 function submitCreate(event) {
@@ -955,6 +1010,7 @@
                 setStatus('Waiting for Jellyfin client...', false);
 
                 document.querySelector('#LoadSubtitlesButton').addEventListener('click', loadSubtitles);
+                document.querySelector('#RandomGifButton').addEventListener('click', onRandomGifClick);
                 document.querySelector('#GifGeneratorCreateForm').addEventListener('submit', submitCreate);
                 document.querySelector('#GifItemSearch').addEventListener('input', onGifItemSearchInput);
                 document.querySelector('#GifItemSearch').addEventListener('keydown', onGifItemSearchKeydown);
