@@ -49,7 +49,7 @@ public class GifControllerSeekModeTests
 
     private static ProcessStartInfo BuildProcessStartInfo(double startSeconds, SubtitleSeekMode subtitleSeekMode)
     {
-        var controllerType = Type.GetType(ControllerTypeName, throwOnError: true)!;
+        var controllerType = typeof(Jellyfin.Plugin.Template.Plugin).Assembly.GetType(ControllerTypeName, throwOnError: true)!;
         var subtitleSelectionType = controllerType.GetNestedType("SubtitleSelection", BindingFlags.NonPublic)!;
         var subtitleSelection = Activator.CreateInstance(
             subtitleSelectionType,
