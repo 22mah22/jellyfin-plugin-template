@@ -14,14 +14,4 @@ public enum SubtitleSeekMode
     /// Places seek before input for faster startup, with slight subtitle timing drift risk.
     /// </summary>
     Fast = 1,
-
-    /// <summary>
-    /// Uses a coarse seek before input and a fine seek after input as a balance.
-    /// </summary>
-    Hybrid = 2,
-
-    /// <summary>
-    /// Chooses seek mode from clip start time: accurate for short offsets, hybrid for longer offsets.
-    /// </summary>
-    Auto = 3
 }

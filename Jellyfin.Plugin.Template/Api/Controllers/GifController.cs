@@ -34,7 +34,7 @@ public class GifController : ControllerBase
     private const int MinimumGifRetentionHours = 1;
     private const int MaximumGifRetentionHours = 8760;
     private const int MaxGeneratedGifCount = 500;
-    private const double MaximumSubtitleSeekPreRollSeconds = 120;
+    private const double DeterministicSubtitleSeekThresholdSeconds = 600;
 
     private static readonly Regex SafeGifFileNamePattern = new(@"^[A-Za-z0-9_.-]+\.gif$", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
@@ -174,8 +174,7 @@ public class GifController : ControllerBase
             subtitleSelection,
             request.SubtitleFontSize,
             subtitleOffsetResult.Seconds,
-            plugin.Configuration.SubtitleSeekMode,
-            plugin.Configuration.SubtitleSeekPreRollSeconds);
+            plugin.Configuration.SubtitleSeekMode);
 
         using var process = new Process { StartInfo = processInfo };
         try
@@ -296,14 +295,12 @@ public class GifController : ControllerBase
         SubtitleSelection subtitleSelection,
         int? subtitleFontSize,
         double subtitleOffsetSeconds,
-        SubtitleSeekMode subtitleSeekMode,
-        double subtitleSeekPreRollSeconds)
+        SubtitleSeekMode subtitleSeekMode)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         var videoFilter = BuildVideoFilter(fps, width, inputPath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds);
-        var normalizedSeekMode = Enum.IsDefined(subtitleSeekMode) ? subtitleSeekMode : SubtitleSeekMode.Auto;
-        var preRollSeconds = Math.Clamp(subtitleSeekPreRollSeconds, 0, MaximumSubtitleSeekPreRollSeconds);
+        var configuredSeekModeIsKnown = Enum.IsDefined(subtitleSeekMode);
 
         var processInfo = new ProcessStartInfo
         {
@@ -328,8 +325,13 @@ public class GifController : ControllerBase
         }
         else
         {
-            var effectiveSeekMode = ResolveSubtitleSeekMode(normalizedSeekMode, startSeconds);
-            AddSubtitleSeekArguments(processInfo.ArgumentList, inputPath, startSeconds, effectiveSeekMode, preRollSeconds);
+            if (!configuredSeekModeIsKnown)
+            {
+                // Legacy/unknown persisted seek values are tolerated and mapped to deterministic threshold behavior.
+            }
+
+            var effectiveSeekMode = ResolveSubtitleSeekMode(startSeconds);
+            AddSubtitleSeekArguments(processInfo.ArgumentList, inputPath, startSeconds, effectiveSeekMode);
         }
 
         processInfo.ArgumentList.Add("-t");
@@ -346,8 +348,7 @@ public class GifController : ControllerBase
         Collection<string> argumentList,
         string inputPath,
         double startSeconds,
-        SubtitleSeekMode subtitleSeekMode,
-        double preRollSeconds)
+        SubtitleSeekMode subtitleSeekMode)
     {
         var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
         switch (subtitleSeekMode)
@@ -359,20 +360,6 @@ public class GifController : ControllerBase
                 argumentList.Add("-i");
                 argumentList.Add(inputPath);
                 break;
-            case SubtitleSeekMode.Hybrid:
-            {
-                var coarseSeekSeconds = Math.Max(0, startSeconds - preRollSeconds);
-                var fineSeekSeconds = Math.Max(0, startSeconds - coarseSeekSeconds);
-
-                argumentList.Add("-ss");
-                argumentList.Add(coarseSeekSeconds.ToString("0.###", CultureInfo.InvariantCulture));
-                argumentList.Add("-i");
-                argumentList.Add(inputPath);
-                argumentList.Add("-ss");
-                argumentList.Add(fineSeekSeconds.ToString("0.###", CultureInfo.InvariantCulture));
-                break;
-            }
-
             case SubtitleSeekMode.Accurate:
             default:
                 // Accurate mode keeps seek after input so subtitle timestamps stay aligned for burn-in.
@@ -384,17 +371,14 @@ public class GifController : ControllerBase
         }
     }
 
-    private static SubtitleSeekMode ResolveSubtitleSeekMode(SubtitleSeekMode configuredSeekMode, double startSeconds)
+    private static SubtitleSeekMode ResolveSubtitleSeekMode(double startSeconds)
     {
-        if (configuredSeekMode != SubtitleSeekMode.Auto)
+        if (startSeconds < DeterministicSubtitleSeekThresholdSeconds)
         {
-            return configuredSeekMode;
+            return SubtitleSeekMode.Accurate;
         }
 
-        // Auto currently prefers accurate seek for subtitle burn-in reliability.
-        // Hybrid/fast pre-input seeks can cause ffmpeg subtitles filter to miss cues entirely on many sources.
-        _ = startSeconds;
-        return SubtitleSeekMode.Accurate;
+        return SubtitleSeekMode.Fast;
     }
 
     private static string BuildVideoFilter(

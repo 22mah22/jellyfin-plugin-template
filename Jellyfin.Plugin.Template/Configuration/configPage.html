@@ -37,17 +37,10 @@
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="SubtitleSeekMode">Subtitle Seek Mode</label>
                         <select id="SubtitleSeekMode" name="SubtitleSeekMode" is="emby-select">
-                            <option value="3">Auto (currently same as Accurate for burn-in reliability)</option>
                             <option value="0">Accurate (recommended subtitle sync)</option>
                             <option value="1">Fast (better speed, slight subtitle timing risk)</option>
-                            <option value="2">Hybrid (coarse + fine seek balance)</option>
                         </select>
-                        <div class="fieldDescription">Controls ffmpeg seek placement when subtitle burn-in is enabled.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="SubtitleSeekPreRollSeconds">Subtitle Hybrid Pre-roll (seconds)</label>
-                        <input id="SubtitleSeekPreRollSeconds" name="SubtitleSeekPreRollSeconds" type="number" is="emby-input" min="0" max="120" step="0.1" required />
-                        <div class="fieldDescription">Used in Hybrid mode. Auto currently maps to Accurate mode while subtitle burn-in compatibility work is in progress.</div>
+                        <div class="fieldDescription">Used as a compatibility fallback. Subtitle burn-in seek placement is selected deterministically from clip start time.</div>
                     </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
@@ -73,11 +66,6 @@
                 return Math.min(max, Math.max(min, value));
             }
 
-            function parseNumber(selector, fallback) {
-                var value = parseFloat(document.querySelector(selector).value);
-                return Number.isNaN(value) ? fallback : value;
-            }
-
             document.querySelector('#GifGeneratorConfigPage')
                 .addEventListener('pageshow', function() {
                     Dashboard.showLoadingMsg();
@@ -86,8 +74,8 @@
                         document.querySelector('#DefaultFps').value = config.DefaultFps;
                         document.querySelector('#DefaultWidth').value = config.DefaultWidth;
                         document.querySelector('#GifRetentionHours').value = config.GifRetentionHours || 168;
-                        document.querySelector('#SubtitleSeekMode').value = String(config.SubtitleSeekMode || 0);
-                        document.querySelector('#SubtitleSeekPreRollSeconds').value = config.SubtitleSeekPreRollSeconds || 2;
+                        var subtitleSeekMode = clamp(parseInt(config.SubtitleSeekMode, 10) || 0, 0, 1);
+                        document.querySelector('#SubtitleSeekMode').value = String(subtitleSeekMode);
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -102,8 +90,7 @@
                         config.DefaultFps = parsePositiveInt('#DefaultFps');
                         config.DefaultWidth = parsePositiveInt('#DefaultWidth');
                         config.GifRetentionHours = clamp(parsePositiveInt('#GifRetentionHours'), 1, 8760);
-                        config.SubtitleSeekMode = clamp(parsePositiveInt('#SubtitleSeekMode'), 0, 3);
-                        config.SubtitleSeekPreRollSeconds = clamp(parseNumber('#SubtitleSeekPreRollSeconds', 2), 0, 120);
+                        config.SubtitleSeekMode = clamp(parsePositiveInt('#SubtitleSeekMode'), 0, 1);
                         ApiClient.updatePluginConfiguration(GifGeneratorConfig.pluginUniqueId, config).then(function(result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
                         });
