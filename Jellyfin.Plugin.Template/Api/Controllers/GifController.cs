@@ -1849,6 +1849,12 @@ public class GifController : ControllerBase
         }
     }
 
+    private enum StageASeekMode
+    {
+        FastInputSeek,
+        AccurateOutputSeek
+    }
+
     private readonly record struct SubtitleTimingModel(
         double SegmentStartSeconds,
         double RelativeClipStartSeconds,
@@ -1884,12 +1890,6 @@ public class GifController : ControllerBase
         bool IsTemporaryPreparedSubtitleFile);
 
     private sealed record SrtClipResult(int KeptCueCount);
-
-    private enum StageASeekMode
-    {
-        FastInputSeek,
-        AccurateOutputSeek
-    }
 
     private sealed record FfmpegExecutionTelemetry(
         Guid ItemId,
