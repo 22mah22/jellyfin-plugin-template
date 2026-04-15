@@ -77,6 +77,15 @@ public class GifController : ControllerBase
         ".vtt"
     };
 
+    private static readonly string[] RecoverableTwoStepPreparationErrorMarkers =
+    [
+        "Subtitle encoding currently only possible",
+        "Could not write header for output file",
+        "Could not find tag for codec",
+        "Error initializing output stream",
+        "Error selecting an encoder"
+    ];
+
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<GifController> _logger;
     private readonly IApplicationPaths _serverApplicationPaths;
@@ -213,7 +222,42 @@ public class GifController : ControllerBase
                 request.SubtitleFontSize,
                 request.SubtitleStreamIndex,
                 cancellationToken).ConfigureAwait(false);
-            if (!twoStepResult.IsSuccess)
+            if (!twoStepResult.IsSuccess && twoStepResult.IsRecoverablePreparationFailure)
+            {
+                _logger.LogWarning(
+                    "Recoverable subtitle two-step preparation failure for item {ItemId}; falling back to accurate single-pass pipeline. Reason: {ErrorMessage}",
+                    request.ItemId,
+                    twoStepResult.ErrorMessage);
+
+                var singlePassResult = await RunSubtitleSinglePassPipelineAsync(
+                    request.ItemId,
+                    ffmpegPath,
+                    subtitleTimingModel,
+                    request.StartSeconds,
+                    request.LengthSeconds,
+                    item.Path,
+                    fps,
+                    width,
+                    outputPath,
+                    subtitleSelection,
+                    request.SubtitleFontSize,
+                    request.SubtitleStreamIndex,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (!singlePassResult.IsSuccess)
+                {
+                    _logger.LogWarning(
+                        "Subtitle GIF generation failed for both two-step and fallback single-pass paths for item {ItemId}. TwoStepError={TwoStepError} FallbackError={FallbackError}",
+                        request.ItemId,
+                        twoStepResult.ErrorMessage,
+                        singlePassResult.ErrorMessage);
+
+                    return StatusCode(
+                        StatusCodes.Status500InternalServerError,
+                        $"Both subtitle pipeline paths failed. Fallback also failed after recoverable two-step preparation error. {singlePassResult.ErrorMessage}");
+                }
+            }
+            else if (!twoStepResult.IsSuccess)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, twoStepResult.ErrorMessage);
             }
@@ -347,7 +391,7 @@ public class GifController : ControllerBase
         return processInfo;
     }
 
-    private async Task<FfmpegRunResult> RunSubtitleTwoStepPipelineAsync(
+    private async Task<SubtitlePipelineRunResult> RunSubtitleTwoStepPipelineAsync(
         Guid itemId,
         string ffmpegPath,
         SubtitleTimingModel subtitleTimingModel,
@@ -401,7 +445,8 @@ public class GifController : ControllerBase
                     stageIdentifier,
                     itemId,
                     stageAResult.ErrorMessage);
-                return new FfmpegRunResult(false, $"GIF pipeline failed at {stageIdentifier}: {stageAResult.ErrorMessage}");
+                var twoStepErrorMessage = $"GIF pipeline failed at {stageIdentifier}: {stageAResult.ErrorMessage}";
+                return new SubtitlePipelineRunResult(false, twoStepErrorMessage, IsRecoverableTwoStepPreparationFailure(stageAResult.ErrorMessage));
             }
 
             stageIdentifier = "stageB";
@@ -432,7 +477,7 @@ public class GifController : ControllerBase
                     stageIdentifier,
                     itemId,
                     stageBResult.ErrorMessage);
-                return new FfmpegRunResult(false, $"GIF pipeline failed at {stageIdentifier}: {stageBResult.ErrorMessage}");
+                return new SubtitlePipelineRunResult(false, $"GIF pipeline failed at {stageIdentifier}: {stageBResult.ErrorMessage}", false);
             }
 
             pipelineStopwatch.Stop();
@@ -440,7 +485,7 @@ public class GifController : ControllerBase
                 "GIF subtitle pipeline completed for item {ItemId} in {DurationMs}ms.",
                 itemId,
                 pipelineStopwatch.ElapsedMilliseconds);
-            return new FfmpegRunResult(true, null);
+            return new SubtitlePipelineRunResult(true, null, false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -451,7 +496,7 @@ public class GifController : ControllerBase
                 requestStartSeconds,
                 lengthSeconds,
                 requestedSubtitleStreamIndex);
-            return new FfmpegRunResult(false, $"GIF pipeline was canceled at {stageIdentifier}.");
+            return new SubtitlePipelineRunResult(false, $"GIF pipeline was canceled at {stageIdentifier}.", false);
         }
         finally
         {
@@ -467,6 +512,71 @@ public class GifController : ControllerBase
 
             TryDeleteDirectory(tempDirectory);
         }
+    }
+
+    private async Task<FfmpegRunResult> RunSubtitleSinglePassPipelineAsync(
+        Guid itemId,
+        string ffmpegPath,
+        SubtitleTimingModel subtitleTimingModel,
+        double requestStartSeconds,
+        double lengthSeconds,
+        string inputPath,
+        int fps,
+        int width,
+        string outputPath,
+        SubtitleSelection subtitleSelection,
+        int? subtitleFontSize,
+        int? requestedSubtitleStreamIndex,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var processInfo = BuildSubtitleSinglePassCmd(
+            ffmpegPath,
+            subtitleTimingModel.SegmentStartSeconds,
+            lengthSeconds,
+            inputPath,
+            fps,
+            width,
+            outputPath,
+            subtitleSelection,
+            subtitleFontSize,
+            subtitleTimingModel.EffectiveSubtitleOffsetSeconds);
+
+        var runResult = await RunFfmpegAsync(processInfo, cancellationToken).ConfigureAwait(false);
+        stopwatch.Stop();
+
+        if (!runResult.IsSuccess)
+        {
+            _logger.LogWarning(
+                "GIF subtitle fallback single-pass pipeline failed for item {ItemId} after {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}). Error: {ErrorMessage}",
+                itemId,
+                stopwatch.ElapsedMilliseconds,
+                requestStartSeconds,
+                lengthSeconds,
+                requestedSubtitleStreamIndex,
+                runResult.ErrorMessage);
+            return new FfmpegRunResult(false, $"GIF fallback single-pass pipeline failed: {runResult.ErrorMessage}");
+        }
+
+        _logger.LogInformation(
+            "GIF subtitle fallback single-pass pipeline completed for item {ItemId} in {DurationMs}ms (start={StartSeconds}s length={LengthSeconds}s subtitleStreamIndex={SubtitleStreamIndex}).",
+            itemId,
+            stopwatch.ElapsedMilliseconds,
+            requestStartSeconds,
+            lengthSeconds,
+            requestedSubtitleStreamIndex);
+
+        return new FfmpegRunResult(true, null);
+    }
+
+    private static bool IsRecoverableTwoStepPreparationFailure(string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            return false;
+        }
+
+        return RecoverableTwoStepPreparationErrorMarkers.Any(marker => errorMessage.Contains(marker, StringComparison.OrdinalIgnoreCase));
     }
 
     private static ProcessStartInfo BuildStageACmd(
@@ -522,6 +632,47 @@ public class GifController : ControllerBase
 
         processInfo.ArgumentList.Add("-y");
         processInfo.ArgumentList.Add(intermediatePath);
+
+        return processInfo;
+    }
+
+    private static ProcessStartInfo BuildSubtitleSinglePassCmd(
+        string ffmpegPath,
+        double startSeconds,
+        double lengthSeconds,
+        string inputPath,
+        int fps,
+        int width,
+        string outputPath,
+        SubtitleSelection subtitleSelection,
+        int? subtitleFontSize,
+        double subtitleOffsetSeconds)
+    {
+        var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+        var length = lengthSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+
+        var processInfo = new ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        processInfo.ArgumentList.Add("-hide_banner");
+        processInfo.ArgumentList.Add("-loglevel");
+        processInfo.ArgumentList.Add("error");
+        processInfo.ArgumentList.Add("-i");
+        processInfo.ArgumentList.Add(inputPath);
+        processInfo.ArgumentList.Add("-ss");
+        processInfo.ArgumentList.Add(start);
+        processInfo.ArgumentList.Add("-t");
+        processInfo.ArgumentList.Add(length);
+        processInfo.ArgumentList.Add("-vf");
+        processInfo.ArgumentList.Add(BuildVideoFilter(fps, width, inputPath, subtitleSelection, subtitleFontSize, subtitleOffsetSeconds));
+        processInfo.ArgumentList.Add("-y");
+        processInfo.ArgumentList.Add(outputPath);
 
         return processInfo;
     }
@@ -1189,6 +1340,11 @@ public class GifController : ControllerBase
     private sealed record FfmpegRunResult(
         bool IsSuccess,
         string? ErrorMessage);
+
+    private sealed record SubtitlePipelineRunResult(
+        bool IsSuccess,
+        string? ErrorMessage,
+        bool IsRecoverablePreparationFailure);
 
     private sealed record SubtitleOffsetParseResult(
         bool IsValid,
