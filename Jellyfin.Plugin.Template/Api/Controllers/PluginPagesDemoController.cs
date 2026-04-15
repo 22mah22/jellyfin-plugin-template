@@ -614,7 +614,9 @@ public class PluginPagesDemoController : ControllerBase
 
                                             document.getElementById('GifStartTime').value = formatTimestamp(randomStartSeconds);
                                             document.getElementById('GifLength').value = '3';
-                                            document.getElementById('GifGeneratorCreateForm').requestSubmit();
+                                            createGif({
+                                                preventDefault: function () { }
+                                            });
                                         }
 
                                         function hydrateFromQuery() {
